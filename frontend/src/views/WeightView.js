@@ -2,6 +2,7 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "../contexts/AppContext";
 import WeightChart from "../components/WeightChart";
+import WeeklyAverages from "../components/WeeklyAverages";
 import AddWeightDialog from "../components/AddWeightDialog";
 import { deleteWeight } from "../lib/data";
 import { formatWeight } from "../lib/units";
@@ -44,6 +45,8 @@ export default function WeightView() {
       <div className="rounded-[var(--radius)] border bg-card p-6">
         <WeightChart height={320} />
       </div>
+
+      <WeeklyAverages />
 
       <div className="rounded-[var(--radius)] border bg-card">
         <div className="border-b border-border px-6 py-4">

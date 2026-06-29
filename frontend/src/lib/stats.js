@@ -71,3 +71,24 @@ export function computeStats(weights = [], logs = [], goal = null, photos = []) 
     bestStreak: streak, // simple; live streak doubles as best for now
   };
 }
+
+// Group weigh-ins into ISO weeks (Mon-start) and average them.
+export function weeklyAverages(weights = []) {
+  const map = new Map();
+  for (const w of weights) {
+    const d = new Date(w.date);
+    const dayIdx = (d.getDay() + 6) % 7; // 0 = Monday
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - dayIdx);
+    const key = monday.toISOString().slice(0, 10);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(w.weightKg);
+  }
+  return [...map.entries()]
+    .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+    .map(([weekStart, vals]) => ({
+      weekStart,
+      avgKg: vals.reduce((s, v) => s + v, 0) / vals.length,
+      count: vals.length,
+    }));
+}

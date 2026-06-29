@@ -5,6 +5,7 @@ import { useApp } from "../contexts/AppContext";
 import { addPhoto, deletePhoto } from "../lib/data";
 import { compressImage } from "../lib/image";
 import { formatWeight } from "../lib/units";
+import ComparePhotos from "../components/ComparePhotos";
 
 export default function PhotosView() {
   const { uid, photos, stats, unit } = useApp();
@@ -73,6 +74,8 @@ export default function PhotosView() {
           data-testid="photo-file-input"
         />
       </div>
+
+      <ComparePhotos />
 
       {photos.length === 0 ? (
         <div

@@ -1,11 +1,58 @@
-import { Sparkles } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Sparkles, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
 import { useApp } from "../contexts/AppContext";
 import { getCoachMessage } from "../lib/coach";
+import { fetchCoachTip } from "../lib/coachApi";
+import { toDisplay } from "../lib/units";
 
 export default function CoachCard() {
-  const { stats, unit, goal } = useApp();
-  const { headline, message } = getCoachMessage(stats, unit, goal);
+  const { stats, unit, goal, profile } = useApp();
+  const fallback = getCoachMessage(stats, unit, goal);
+
+  const [aiMsg, setAiMsg] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const buildPayload = useCallback(() => {
+    const num = (v) => (v == null ? null : Number(toDisplay(v, unit).toFixed(1)));
+    return {
+      unit,
+      current: num(stats.current),
+      total_change: num(stats.totalChange),
+      last_change: num(stats.lastChange),
+      streak: stats.streak,
+      logged_today: stats.loggedToday,
+      goal_progress: stats.goalProgress,
+      to_goal: num(stats.toGoalKg),
+      goal_target: goal ? num(goal.targetWeightKg) : null,
+      calories: stats.today.calories || 0,
+      water: stats.today.water || 0,
+      steps: stats.today.steps || 0,
+      total_entries: stats.totalEntries,
+      name: (profile?.displayName || "").split(" ")[0] || null,
+    };
+  }, [stats, unit, goal, profile]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const tip = await fetchCoachTip(buildPayload());
+      setAiMsg(tip || null);
+    } catch {
+      setAiMsg(null); // graceful fallback to rule-based message
+    } finally {
+      setLoading(false);
+    }
+  }, [buildPayload]);
+
+  // Regenerate when the meaningful data changes.
+  const sig = `${stats.current}|${stats.streak}|${stats.totalEntries}|${stats.today.calories}|${stats.today.water}|${stats.today.steps}|${stats.goalProgress}`;
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig]);
+
+  const body = aiMsg || fallback.message;
 
   return (
     <motion.div
@@ -20,15 +67,26 @@ export default function CoachCard() {
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary">
           <Sparkles className="h-5 w-5" />
         </div>
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-primary">
-            Your Coach
-          </p>
+        <div className="flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+              {aiMsg ? "AI Coach" : "Your Coach"}
+            </p>
+            <button
+              onClick={load}
+              disabled={loading}
+              data-testid="coach-refresh"
+              className="text-primary/70 transition-colors hover:text-primary disabled:opacity-50"
+              title="New tip"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
           <h3 className="font-heading mt-1 text-lg font-bold" data-testid="coach-headline">
-            {headline}
+            {fallback.headline}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground" data-testid="coach-message">
-            {message}
+            {body}
           </p>
         </div>
       </div>

@@ -35,8 +35,16 @@
 - Photos: upload (compressed), timeline grid, delete.
 - Achievements: 12 data-driven badges with unlock progress.
 - Settings: unit toggle (kg/lbs), theme switcher, accent presets + custom color, goal config, profile.
-- Rule-based coach (lib/coach.js) — LLM-upgradeable later via Cloud Functions (user chose C).
 - Firebase deploy config: firebase.json, .firebaserc, firestore.rules, firestore.indexes.json, DEPLOY.md.
+
+## Iteration 2 (2026-06)
+- Weekly-average weight trend (components/WeeklyAverages.js + lib/stats.weeklyAverages) on Weight page — VERIFIED logic.
+- Before/After progress photo compare slider (components/ComparePhotos.js) on Photos page.
+- LLM AI Coach (user choice 1a): FastAPI endpoint POST /api/coach using emergentintegrations
+  + EMERGENT_LLM_KEY, model = openai gpt-5.4. Frontend CoachCard calls it with graceful
+  fallback to the rule-based coach on any error/budget issue. VERIFIED via curl (preview + external URL).
+  NOTE: this backend coach runs in the Emergent environment; on a static Firebase Hosting
+  deploy it will fall back to the rule-based coach unless moved to Cloud Functions later.
 
 ## Verification status
 - Build compiles cleanly; login screen + Firebase auth initialization VERIFIED via screenshot.

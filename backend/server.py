@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -6,13 +6,16 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
+from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -41,6 +44,78 @@ class StatusCheckCreate(BaseModel):
 @api_router.get("/")
 async def root():
     return {"message": "Hello World"}
+
+
+# ---------------- AI Coach ----------------
+class CoachRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    unit: str = "kg"
+    current: Optional[float] = None          # display unit
+    total_change: Optional[float] = None     # display unit (negative = lost)
+    last_change: Optional[float] = None
+    streak: int = 0
+    logged_today: bool = False
+    goal_progress: Optional[float] = None    # 0..1
+    to_goal: Optional[float] = None          # display unit
+    goal_target: Optional[float] = None      # display unit
+    calories: int = 0
+    water: int = 0
+    steps: int = 0
+    total_entries: int = 0
+    name: Optional[str] = None
+
+
+COACH_SYSTEM = (
+    "You are an upbeat, emotionally intelligent weight-loss and wellness coach inside an "
+    "app called WL Pro. You write SHORT, punchy, genuinely encouraging messages (max 2 "
+    "sentences, under 45 words). Be warm and human, never preachy, never give medical advice, "
+    "never shame the user about weight gain or fluctuations. Celebrate consistency and effort "
+    "over outcomes. Use at most one tasteful emoji. Output ONLY the message text — no quotes, "
+    "no preamble, no headline."
+)
+
+
+def _build_coach_prompt(r: CoachRequest) -> str:
+    u = r.unit
+    parts = [f"User stats today:"]
+    if r.name:
+        parts.append(f"- Name: {r.name}")
+    if r.total_entries == 0:
+        parts.append("- They have not logged any weigh-ins yet. Welcome them and nudge them to log their first.")
+    if r.current is not None:
+        parts.append(f"- Current weight: {r.current:.1f} {u}")
+    if r.total_change is not None:
+        parts.append(f"- Change since start: {r.total_change:+.1f} {u} (negative means weight lost)")
+    if r.last_change is not None:
+        parts.append(f"- Change since last entry: {r.last_change:+.1f} {u}")
+    parts.append(f"- Logging streak: {r.streak} days")
+    parts.append(f"- Logged today: {'yes' if r.logged_today else 'no'}")
+    if r.goal_progress is not None:
+        parts.append(f"- Goal progress: {round(r.goal_progress * 100)}%")
+    if r.to_goal is not None and r.goal_target is not None:
+        parts.append(f"- {abs(r.to_goal):.1f} {u} to their target of {r.goal_target:.1f} {u}")
+    parts.append(f"- Today: {r.calories} kcal, {r.water} glasses water, {r.steps} steps")
+    parts.append("\nWrite one fresh, specific, motivating coaching message based on the most "
+                 "noteworthy detail above.")
+    return "\n".join(parts)
+
+
+@api_router.post("/coach")
+async def coach(req: CoachRequest):
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=503, detail="LLM key not configured")
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"coach-{uuid.uuid4()}",
+            system_message=COACH_SYSTEM,
+        ).with_model("openai", "gpt-5.4")
+        message = await chat.send_message(UserMessage(text=_build_coach_prompt(req)))
+        text = (message or "").strip().strip('"')
+        return {"message": text}
+    except Exception as e:
+        logger.exception("coach generation failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/status", response_model=StatusCheck)
 async def create_status_check(input: StatusCheckCreate):

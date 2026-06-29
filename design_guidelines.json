@@ -1,0 +1,146 @@
+{
+  "theme_strategy": {
+    "approach": "CSS Variables overriding based on data-theme attribute on the root html element.",
+    "themes": [
+      {
+        "name": "Clean Light",
+        "data_attribute": "light",
+        "archetype": "Organic & Earthy",
+        "tokens": {
+          "--background": "#F9F9F7",
+          "--foreground": "#1A1A1A",
+          "--card": "#FFFFFF",
+          "--card-foreground": "#1A1A1A",
+          "--primary": "#2D6A4F",
+          "--primary-foreground": "#FFFFFF",
+          "--muted": "#E9E9E4",
+          "--muted-foreground": "#737373",
+          "--border": "#E5E5DF",
+          "--ring": "#2D6A4F",
+          "--radius": "1rem"
+        }
+      },
+      {
+        "name": "Calm Dark",
+        "data_attribute": "dark",
+        "archetype": "Luxury / Moody",
+        "tokens": {
+          "--background": "#0F1115",
+          "--foreground": "#EDEDED",
+          "--card": "#181A1F",
+          "--card-foreground": "#EDEDED",
+          "--primary": "#B2A478",
+          "--primary-foreground": "#000000",
+          "--muted": "#262931",
+          "--muted-foreground": "#8F95A3",
+          "--border": "#2E323D",
+          "--ring": "#B2A478",
+          "--radius": "0.75rem"
+        }
+      },
+      {
+        "name": "Energetic",
+        "data_attribute": "energetic",
+        "archetype": "Performance Pro",
+        "tokens": {
+          "--background": "#0B0B0F",
+          "--foreground": "#FFFFFF",
+          "--card": "#141419",
+          "--card-foreground": "#FFFFFF",
+          "--primary": "#D4FF00",
+          "--primary-foreground": "#000000",
+          "--muted": "#1E1E26",
+          "--muted-foreground": "#A1A1AA",
+          "--border": "#272730",
+          "--ring": "#D4FF00",
+          "--radius": "0rem"
+        }
+      }
+    ],
+    "custom_theme_support": "To support custom accents, update the --primary and --ring variables dynamically via React state injected as a style prop on the app wrapper, e.g., style={{ '--primary': userHex }}."
+  },
+  "typography": {
+    "font_families": {
+      "heading": "Outfit, sans-serif",
+      "body": "Manrope, sans-serif"
+    },
+    "scale_rules": {
+      "h1_hero": "text-5xl sm:text-6xl font-black tracking-tighter",
+      "h2_section": "text-3xl sm:text-4xl font-bold tracking-tight",
+      "h3_card": "text-xl font-semibold tracking-tight",
+      "body_base": "text-base leading-relaxed text-muted-foreground",
+      "metric_value": "text-4xl sm:text-5xl font-black tracking-tighter font-mono"
+    },
+    "dynamic_weighting": "In the 'Energetic' theme, use uppercase and font-black for headings. In 'Clean Light' and 'Calm Dark', use normal casing and font-semibold/bold."
+  },
+  "layout_and_spacing": {
+    "bento_grid": {
+      "container": "grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-4 md:gap-6",
+      "hero_span": "col-span-1 md:col-span-4 lg:col-span-4 row-span-2",
+      "feature_span": "col-span-1 md:col-span-2 lg:col-span-2 row-span-1",
+      "metric_span": "col-span-1 md:col-span-1 lg:col-span-2 row-span-1"
+    },
+    "padding_scale": "p-6 for standard cards, p-8 for hero dashboard widgets. Use generous gap-6 between bento items.",
+    "mobile_constraints": "Images max-h-[40vh] on mobile. Bento grid collapses strictly to grid-cols-1."
+  },
+  "components": {
+    "cards": {
+      "base": "rounded-[var(--radius)] border bg-card text-card-foreground",
+      "light": "shadow-sm border-border",
+      "dark": "shadow-none border-border/40",
+      "energetic": "shadow-none border-border"
+    },
+    "coach_card": {
+      "concept": "The Tracing Beam / Glowing AI Assistant",
+      "style": "relative overflow-hidden rounded-[var(--radius)] p-6 bg-gradient-to-br from-primary/10 to-transparent border border-primary/20",
+      "accent": "Include a subtle blur-md background element behind the icon for a 'glowing' effect."
+    },
+    "charts": {
+      "recommendation": "Use Recharts with Tailwind CSS variables. The line chart for weight must use var(--primary) for the stroke, with a subtle area fill below it.",
+      "tooltip": "Must use the theme's --card background with a 1px border."
+    },
+    "progress_ring": {
+      "style": "SVG based. Track is stroke-muted, fill is stroke-primary. Stroke width should be thick (12px) for impact."
+    },
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground hover:opacity-90 transition-opacity font-semibold rounded-full px-8 py-3",
+      "energetic_override": "In energetic theme, buttons should inherit --radius (0rem) and be uppercase."
+    }
+  },
+  "motion": {
+    "interactions": "Hover states on cards: -translate-y-1, shadow-lg, border-primary/50. Transition: transform 0.2s ease, border-color 0.2s ease.",
+    "page_transitions": "Fade and slight slide-up (framer-motion) for dashboard content entry.",
+    "progress_fill": "Progress rings must animate from 0 to target value on load over 1.2s cubic-bezier."
+  },
+  "accessibility": {
+    "contrast": "Ensure --primary-foreground has at least 4.5:1 contrast against --primary. For Energetic theme, neon colors must use black text.",
+    "testing": "All interactive elements MUST include data-testid attribute. e.g., data-testid='weight-log-submit', data-testid='theme-toggle-btn', data-testid='unit-toggle'."
+  },
+  "media": {
+    "auth_backgrounds": [
+      {
+        "url": "https://images.unsplash.com/photo-1594882645126-14020914d58d",
+        "category": "auth_hero_energetic",
+        "description": "Silhouette of man jumping on rocky mountain during sunset - fits Energetic theme auth screens"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1764112434647-bfd7d5ccb10d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzR8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwemVuJTIwY2FsbXxlbnwwfHx8fDE3ODIzMTEwNDV8MA&ixlib=rb-4.1.0&q=85",
+        "category": "auth_hero_light",
+        "description": "Zen garden with raked sand - fits Clean Light / Calm theme auth screens"
+      },
+      {
+        "url": "https://images.pexels.com/photos/14289784/pexels-photo-14289784.jpeg",
+        "category": "auth_hero_dark",
+        "description": "Heavy dumbbells on a rack in a dimly lit gym - fits Calm Dark / Energetic theme"
+      }
+    ]
+  },
+  "instructions_to_main_agent": {
+    "tech_stack": "React, Tailwind CSS, Shadcn/UI, Recharts, Firebase Auth/Firestore.",
+    "file_structure_note": "Write code targeting .js files (JSX), not .tsx.",
+    "theme_implementation": "1. Add data-theme attribute to <html>. 2. Define CSS variables in index.css for :root (light), [data-theme='dark'], [data-theme='energetic']. 3. For custom colors, inject a <style> tag or apply inline styles to root redefining --primary and --ring.",
+    "shadcn_customization": "Shadcn components use these CSS variables. Do not hardcode colors in the components. Utilize the CSS variable --radius for borders to easily toggle between soft and brutalist styles.",
+    "icons": "Use lucide-react. For the Coach Card, use 'Sparkles' or 'Brain' icon.",
+    "testing_ids": "Strictly add data-testid to every clickable element, input, and significant data container (like the streak counter or current weight display)."
+  }
+}

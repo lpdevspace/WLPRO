@@ -11,12 +11,17 @@ import {
   orderBy,
   serverTimestamp,
 } from "firebase/firestore";
-import { db } from "../firebase";
+import {
+  ref,
+  uploadString,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
+import { db, storage } from "../firebase";
 
 const userDoc = (uid) => doc(db, "users", uid);
 const sub = (uid, name) => collection(db, "users", uid, name);
 
-// ---------- Profile ----------
 export async function ensureProfile(user) {
   const ref = userDoc(user.uid);
   const snap = await getDoc(ref);
@@ -45,7 +50,6 @@ export function updateProfile(uid, patch) {
   return updateDoc(userDoc(uid), patch);
 }
 
-// ---------- Weights ----------
 export function subscribeWeights(uid, cb) {
   const q = query(sub(uid, "weights"), orderBy("date", "asc"));
   return onSnapshot(q, (snap) =>
@@ -66,7 +70,6 @@ export function deleteWeight(uid, id) {
   return deleteDoc(doc(db, "users", uid, "weights", id));
 }
 
-// ---------- Daily logs (calories / water / steps) keyed by YYYY-MM-DD ----------
 export function subscribeDailyLogs(uid, cb) {
   const q = query(sub(uid, "dailyLogs"), orderBy("date", "desc"));
   return onSnapshot(q, (snap) =>
@@ -79,7 +82,6 @@ export function upsertDailyLog(uid, dateKey, patch) {
   return setDoc(ref, { date: dateKey, ...patch }, { merge: true });
 }
 
-// ---------- Photos (data URLs) ----------
 export function subscribePhotos(uid, cb) {
   const q = query(sub(uid, "photos"), orderBy("date", "desc"));
   return onSnapshot(q, (snap) =>
@@ -87,9 +89,14 @@ export function subscribePhotos(uid, cb) {
   );
 }
 
-export function addPhoto(uid, { dataUrl, date, weightKg, note }) {
+export async function addPhoto(uid, { dataUrl, date, weightKg, note }) {
+  const photoRef = ref(storage, `users/${uid}/photos/${Date.now()}.jpg`);
+  await uploadString(photoRef, dataUrl, "data_url");
+  const downloadURL = await getDownloadURL(photoRef);
+
   return addDoc(sub(uid, "photos"), {
-    dataUrl,
+    imageUrl: downloadURL,
+    storagePath: photoRef.fullPath,
     date,
     weightKg: weightKg ?? null,
     note: note || "",
@@ -97,11 +104,15 @@ export function addPhoto(uid, { dataUrl, date, weightKg, note }) {
   });
 }
 
-export function deletePhoto(uid, id) {
+export async function deletePhoto(uid, id, storagePath) {
+  if (storagePath) {
+    try {
+      await deleteObject(ref(storage, storagePath));
+    } catch {}
+  }
   return deleteDoc(doc(db, "users", uid, "photos", id));
 }
 
-// ---------- Goal (single doc) ----------
 export function subscribeGoal(uid, cb) {
   return onSnapshot(doc(db, "users", uid, "meta", "goal"), (snap) =>
     cb(snap.exists() ? snap.data() : null),

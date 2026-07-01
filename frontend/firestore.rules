@@ -1,9 +1,77 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // A signed-in user can only read & write data nested under their own uid.
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function validProfile() {
+      return request.resource.data.keys().hasOnly([
+        'displayName', 'email', 'photoURL', 'unit', 'theme', 'accent', 'heightCm', 'createdAt', 'seenBadges'
+      ]);
+    }
+
+    function validWeight() {
+      return request.resource.data.keys().hasOnly(['weightKg', 'date', 'note', 'createdAt'])
+        && request.resource.data.weightKg is number
+        && request.resource.data.weightKg > 0
+        && request.resource.data.weightKg < 500
+        && request.resource.data.date is string
+        && request.resource.data.note is string
+        && request.resource.data.note.size() < 500;
+    }
+
+    function validDailyLog() {
+      return request.resource.data.keys().hasOnly(['date', 'calories', 'water', 'steps'])
+        && request.resource.data.date is string
+        && (!('calories' in request.resource.data) || (request.resource.data.calories is number && request.resource.data.calories >= 0 && request.resource.data.calories < 20000))
+        && (!('water' in request.resource.data) || (request.resource.data.water is number && request.resource.data.water >= 0 && request.resource.data.water < 100))
+        && (!('steps' in request.resource.data) || (request.resource.data.steps is number && request.resource.data.steps >= 0 && request.resource.data.steps < 100000));
+    }
+
+    function validPhoto() {
+      return request.resource.data.keys().hasOnly(['imageUrl', 'storagePath', 'date', 'weightKg', 'note', 'createdAt'])
+        && request.resource.data.imageUrl is string
+        && request.resource.data.imageUrl.size() < 2000
+        && request.resource.data.storagePath is string
+        && request.resource.data.storagePath.size() < 500
+        && request.resource.data.date is string
+        && (!('weightKg' in request.resource.data) || request.resource.data.weightKg == null || (request.resource.data.weightKg is number && request.resource.data.weightKg > 0 && request.resource.data.weightKg < 500))
+        && request.resource.data.note is string
+        && request.resource.data.note.size() < 500;
+    }
+
+    function validGoal() {
+      return request.resource.data.keys().hasOnly(['targetWeightKg', 'targetDate', 'startWeightKg', 'updatedAt'])
+        && request.resource.data.targetWeightKg is number
+        && request.resource.data.targetWeightKg > 0
+        && request.resource.data.targetWeightKg < 500
+        && request.resource.data.startWeightKg is number
+        && request.resource.data.startWeightKg > 0
+        && request.resource.data.startWeightKg < 500
+        && (!('targetDate' in request.resource.data) || request.resource.data.targetDate == null || request.resource.data.targetDate is string);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && validProfile();
+      allow delete: if false;
+
+      match /weights/{docId} {
+        allow read, write: if isOwner(userId) && validWeight();
+      }
+
+      match /dailyLogs/{docId} {
+        allow read, write: if isOwner(userId) && validDailyLog();
+      }
+
+      match /photos/{docId} {
+        allow read, write: if isOwner(userId) && validPhoto();
+      }
+
+      match /meta/goal {
+        allow read, write: if isOwner(userId) && validGoal();
+      }
     }
   }
 }

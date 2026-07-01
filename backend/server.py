@@ -63,6 +63,9 @@ class CoachRequest(BaseModel):
     steps: int = 0
     total_entries: int = 0
     name: Optional[str] = None
+    rate_per_week: Optional[float] = None    # display unit, signed
+    eta_weeks: Optional[float] = None
+    plateau: bool = False
 
 
 COACH_SYSTEM = (
@@ -95,6 +98,13 @@ def _build_coach_prompt(r: CoachRequest) -> str:
     if r.to_goal is not None and r.goal_target is not None:
         parts.append(f"- {abs(r.to_goal):.1f} {u} to their target of {r.goal_target:.1f} {u}")
     parts.append(f"- Today: {r.calories} kcal, {r.water} glasses water, {r.steps} steps")
+    if r.rate_per_week is not None:
+        parts.append(f"- Current pace: {r.rate_per_week:+.2f} {u}/week")
+    if r.eta_weeks is not None and r.eta_weeks > 0:
+        parts.append(f"- At this pace they reach their goal in about {round(r.eta_weeks)} weeks")
+    if r.plateau:
+        parts.append("- They have PLATEAUED (weight flat ~2 weeks). Gently normalize this, "
+                     "reassure them, and offer one small encouraging suggestion.")
     parts.append("\nWrite one fresh, specific, motivating coaching message based on the most "
                  "noteworthy detail above.")
     return "\n".join(parts)

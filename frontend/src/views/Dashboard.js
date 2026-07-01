@@ -13,7 +13,10 @@ import CoachCard from "../components/CoachCard";
 import ProgressRing from "../components/ProgressRing";
 import WeightChart from "../components/WeightChart";
 import AddWeightDialog from "../components/AddWeightDialog";
+import BMICard from "../components/BMICard";
+import ForecastCard from "../components/ForecastCard";
 import { formatWeight } from "../lib/units";
+import { detectPlateau } from "../lib/health";
 
 function greeting() {
   const h = new Date().getHours();
@@ -23,8 +26,9 @@ function greeting() {
 }
 
 export default function Dashboard() {
-  const { profile, stats, unit, goal } = useApp();
+  const { profile, stats, unit, goal, weights } = useApp();
   const name = (profile?.displayName || "").split(" ")[0] || "there";
+  const plateau = detectPlateau(weights, stats.goalProgress);
 
   const changeLabel =
     stats.totalChange == null
@@ -47,6 +51,22 @@ export default function Dashboard() {
       </div>
 
       <CoachCard />
+
+      {plateau.plateau && (
+        <div
+          className="flex items-start gap-3 rounded-[var(--radius)] border border-amber-500/40 bg-amber-500/10 p-4"
+          data-testid="plateau-banner"
+        >
+          <TrendingDown className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+          <div>
+            <p className="font-heading text-sm font-bold">You've hit a plateau</p>
+            <p className="text-sm text-muted-foreground">
+              Your weight has barely moved in ~2 weeks. Plateaus are normal — try shaking
+              up your routine: adjust calories slightly, add steps, or prioritize sleep.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4 lg:grid-cols-6">
         {/* Goal ring hero */}
@@ -123,6 +143,11 @@ export default function Dashboard() {
           value={`${stats.today.water || 0}`}
           sub="glasses"
         />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <BMICard />
+        <ForecastCard />
       </div>
 
       <div className="rounded-[var(--radius)] border bg-card p-6">

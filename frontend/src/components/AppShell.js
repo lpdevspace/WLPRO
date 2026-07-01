@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useApp } from "../contexts/AppContext";
+import CelebrationOverlay from "./CelebrationOverlay";
 
 const NAV = [
   { to: "/app", label: "Dashboard", icon: LayoutDashboard, end: true, id: "dashboard" },
@@ -27,6 +28,7 @@ export default function AppShell({ children }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <CelebrationOverlay />
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-border bg-card/60 p-5 backdrop-blur md:flex">
         <div className="flex items-center gap-2 px-2">

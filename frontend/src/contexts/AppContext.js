@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import {
   ensureProfile,
@@ -10,6 +10,7 @@ import {
   updateProfile,
 } from "../lib/data";
 import { computeStats } from "../lib/stats";
+import { BADGES } from "../lib/badges";
 import { hexToHslString, contrastForeground } from "../lib/color";
 
 const AppContext = createContext(null);
@@ -72,6 +73,35 @@ export function AppProvider({ children }) {
     [weights, logs, goal, photos],
   );
 
+  // ---- Milestone celebrations ----
+  const [newMilestone, setNewMilestone] = useState(null);
+  const handledRef = useRef(new Set());
+
+  useEffect(() => {
+    if (!profile) return;
+    const unlockedIds = BADGES.filter((b) => b.earned(stats)).map((b) => b.id);
+    // First time we ever evaluate for this user: set a baseline, don't celebrate.
+    if (profile.seenBadges === undefined) {
+      unlockedIds.forEach((id) => handledRef.current.add(id));
+      updateProfile(user.uid, { seenBadges: unlockedIds }).catch(() => {});
+      return;
+    }
+    const seen = new Set(profile.seenBadges);
+    const fresh = unlockedIds.filter(
+      (id) => !seen.has(id) && !handledRef.current.has(id),
+    );
+    if (fresh.length) {
+      fresh.forEach((id) => handledRef.current.add(id));
+      const badge = BADGES.find((b) => b.id === fresh[0]);
+      if (badge) setNewMilestone(badge);
+      const merged = Array.from(new Set([...profile.seenBadges, ...unlockedIds]));
+      updateProfile(user.uid, { seenBadges: merged }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stats, profile]);
+
+  const clearMilestone = () => setNewMilestone(null);
+
   const setUnit = (u) => user && updateProfile(user.uid, { unit: u });
   const setTheme = (t) => user && updateProfile(user.uid, { theme: t });
   const setAccent = (a) => user && updateProfile(user.uid, { accent: a });
@@ -93,6 +123,8 @@ export function AppProvider({ children }) {
         setUnit,
         setTheme,
         setAccent,
+        newMilestone,
+        clearMilestone,
         updateProfile: (patch) => user && updateProfile(user.uid, patch),
       }}
     >

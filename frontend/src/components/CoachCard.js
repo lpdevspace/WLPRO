@@ -5,9 +5,10 @@ import { useApp } from "../contexts/AppContext";
 import { getCoachMessage } from "../lib/coach";
 import { fetchCoachTip } from "../lib/coachApi";
 import { toDisplay } from "../lib/units";
+import { forecastGoal, detectPlateau } from "../lib/health";
 
 export default function CoachCard() {
-  const { stats, unit, goal, profile } = useApp();
+  const { stats, unit, goal, profile, weights } = useApp();
   const fallback = getCoachMessage(stats, unit, goal);
 
   const [aiMsg, setAiMsg] = useState(null);
@@ -15,6 +16,8 @@ export default function CoachCard() {
 
   const buildPayload = useCallback(() => {
     const num = (v) => (v == null ? null : Number(toDisplay(v, unit).toFixed(1)));
+    const fc = forecastGoal(weights, goal);
+    const plateau = detectPlateau(weights, stats.goalProgress);
     return {
       unit,
       current: num(stats.current),
@@ -30,8 +33,11 @@ export default function CoachCard() {
       steps: stats.today.steps || 0,
       total_entries: stats.totalEntries,
       name: (profile?.displayName || "").split(" ")[0] || null,
+      rate_per_week: fc ? Number(toDisplay(fc.ratePerWeek, unit).toFixed(2)) : null,
+      eta_weeks: fc && fc.status === "ontrack" ? Number(fc.weeks.toFixed(1)) : null,
+      plateau: plateau.plateau,
     };
-  }, [stats, unit, goal, profile]);
+  }, [stats, unit, goal, profile, weights]);
 
   const load = useCallback(async () => {
     setLoading(true);

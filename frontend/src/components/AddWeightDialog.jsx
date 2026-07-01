@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -13,18 +13,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useApp } from "../contexts/AppContext";
-import { addWeight } from "../lib/data";
-import { fromDisplay, unitLabel } from "../lib/units";
+import { addWeight, updateWeight } from "../lib/data";
+import { fromDisplay, toDisplay, unitLabel } from "../lib/units";
 
-export default function AddWeightDialog({ trigger, defaultDate }) {
+// Used both for adding a new entry and editing an existing one.
+// Pass `existing` prop with a weight object to enter edit mode.
+export default function AddWeightDialog({ trigger, defaultDate, existing, onClose }) {
   const { uid, unit } = useApp();
-  const [open, setOpen] = useState(false);
-  const [value, setValue] = useState("");
-  const [date, setDate] = useState(
-    defaultDate || new Date().toISOString().slice(0, 10),
+  const isEdit = !!existing;
+
+  const [open, setOpen] = useState(!!existing);
+  const [value, setValue] = useState(
+    existing ? String(parseFloat(toDisplay(existing.weightKg, unit).toFixed(1))) : "",
   );
-  const [note, setNote] = useState("");
+  const [date, setDate] = useState(
+    existing
+      ? new Date(existing.date).toISOString().slice(0, 10)
+      : defaultDate || new Date().toISOString().slice(0, 10),
+  );
+  const [note, setNote] = useState(existing?.note || "");
   const [busy, setBusy] = useState(false);
+
+  const handleOpenChange = (val) => {
+    setOpen(val);
+    if (!val && onClose) onClose();
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -35,16 +48,17 @@ export default function AddWeightDialog({ trigger, defaultDate }) {
     }
     setBusy(true);
     try {
-      await addWeight(uid, {
-        weightKg,
-        date: new Date(date).toISOString(),
-        note,
-      });
-      toast.success("Weigh-in logged 💪");
+      if (isEdit) {
+        await updateWeight(uid, existing.id, { weightKg, date: new Date(date).toISOString(), note });
+        toast.success("Entry updated ✏️");
+      } else {
+        await addWeight(uid, { weightKg, date: new Date(date).toISOString(), note });
+        toast.success("Weigh-in logged 💪");
+      }
       setValue("");
       setNote("");
-      setOpen(false);
-    } catch (err) {
+      handleOpenChange(false);
+    } catch {
       toast.error("Could not save. Check your connection / Firestore rules.");
     } finally {
       setBusy(false);
@@ -52,20 +66,24 @@ export default function AddWeightDialog({ trigger, defaultDate }) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button
-            data-testid="open-add-weight"
-            className="rounded-full bg-primary px-6 font-semibold text-primary-foreground hover:opacity-90"
-          >
-            <Plus className="mr-2 h-4 w-4" /> Log weight
-          </Button>
-        )}
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      {!isEdit && (
+        <DialogTrigger asChild>
+          {trigger || (
+            <Button
+              data-testid="open-add-weight"
+              className="rounded-full bg-primary px-6 font-semibold text-primary-foreground hover:opacity-90"
+            >
+              <Plus className="mr-2 h-4 w-4" /> Log weight
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent data-testid="add-weight-dialog">
         <DialogHeader>
-          <DialogTitle className="font-heading">Log a weigh-in</DialogTitle>
+          <DialogTitle className="font-heading">
+            {isEdit ? "Edit weigh-in" : "Log a weigh-in"}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div>
@@ -110,7 +128,7 @@ export default function AddWeightDialog({ trigger, defaultDate }) {
               data-testid="submit-weight"
               className="rounded-full bg-primary font-semibold text-primary-foreground hover:opacity-90"
             >
-              {busy ? "Saving…" : "Save weigh-in"}
+              {busy ? "Saving…" : isEdit ? "Update" : "Save weigh-in"}
             </Button>
           </DialogFooter>
         </form>

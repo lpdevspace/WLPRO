@@ -23,8 +23,8 @@ const userDoc = (uid) => doc(db, "users", uid);
 const sub = (uid, name) => collection(db, "users", uid, name);
 
 export async function ensureProfile(user) {
-  const ref = userDoc(user.uid);
-  const snap = await getDoc(ref);
+  const docRef = userDoc(user.uid);
+  const snap = await getDoc(docRef);
   if (!snap.exists()) {
     const data = {
       displayName: user.displayName || "",
@@ -36,7 +36,7 @@ export async function ensureProfile(user) {
       heightCm: null,
       createdAt: serverTimestamp(),
     };
-    await setDoc(ref, data);
+    await setDoc(docRef, data);
     return data;
   }
   return snap.data();
@@ -66,6 +66,14 @@ export function addWeight(uid, { weightKg, date, note }) {
   });
 }
 
+export function updateWeight(uid, id, { weightKg, date, note }) {
+  return updateDoc(doc(db, "users", uid, "weights", id), {
+    weightKg,
+    date,
+    note: note || "",
+  });
+}
+
 export function deleteWeight(uid, id) {
   return deleteDoc(doc(db, "users", uid, "weights", id));
 }
@@ -78,8 +86,8 @@ export function subscribeDailyLogs(uid, cb) {
 }
 
 export function upsertDailyLog(uid, dateKey, patch) {
-  const ref = doc(db, "users", uid, "dailyLogs", dateKey);
-  return setDoc(ref, { date: dateKey, ...patch }, { merge: true });
+  const logRef = doc(db, "users", uid, "dailyLogs", dateKey);
+  return setDoc(logRef, { date: dateKey, ...patch }, { merge: true });
 }
 
 export function subscribePhotos(uid, cb) {
@@ -93,7 +101,6 @@ export async function addPhoto(uid, { dataUrl, date, weightKg, note }) {
   const photoRef = ref(storage, `users/${uid}/photos/${Date.now()}.jpg`);
   await uploadString(photoRef, dataUrl, "data_url");
   const downloadURL = await getDownloadURL(photoRef);
-
   return addDoc(sub(uid, "photos"), {
     imageUrl: downloadURL,
     storagePath: photoRef.fullPath,
@@ -106,9 +113,7 @@ export async function addPhoto(uid, { dataUrl, date, weightKg, note }) {
 
 export async function deletePhoto(uid, id, storagePath) {
   if (storagePath) {
-    try {
-      await deleteObject(ref(storage, storagePath));
-    } catch {}
+    try { await deleteObject(ref(storage, storagePath)); } catch {}
   }
   return deleteDoc(doc(db, "users", uid, "photos", id));
 }

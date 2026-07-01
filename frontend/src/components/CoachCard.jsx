@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Sparkles, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
 import { useApp } from "../contexts/AppContext";
@@ -7,12 +7,16 @@ import { fetchCoachTip } from "../lib/coachApi";
 import { toDisplay } from "../lib/units";
 import { forecastGoal, detectPlateau } from "../lib/health";
 
+const COOLDOWN_MS = 30_000; // 30 second cooldown between manual refreshes
+
 export default function CoachCard() {
   const { stats, unit, goal, profile, weights } = useApp();
   const fallback = getCoachMessage(stats, unit, goal);
 
   const [aiMsg, setAiMsg] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(false);
+  const cooldownTimer = useRef(null);
 
   const buildPayload = useCallback(() => {
     const num = (v) => (v == null ? null : Number(toDisplay(v, unit).toFixed(1)));
@@ -39,22 +43,27 @@ export default function CoachCard() {
     };
   }, [stats, unit, goal, profile, weights]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isManual = false) => {
+    if (isManual && cooldown) return;
     setLoading(true);
+    if (isManual) {
+      setCooldown(true);
+      clearTimeout(cooldownTimer.current);
+      cooldownTimer.current = setTimeout(() => setCooldown(false), COOLDOWN_MS);
+    }
     try {
       const tip = await fetchCoachTip(buildPayload());
       setAiMsg(tip || null);
     } catch {
-      setAiMsg(null); // graceful fallback to rule-based message
+      setAiMsg(null);
     } finally {
       setLoading(false);
     }
-  }, [buildPayload]);
+  }, [buildPayload, cooldown]);
 
-  // Regenerate when the meaningful data changes.
   const sig = `${stats.current}|${stats.streak}|${stats.totalEntries}|${stats.today.calories}|${stats.today.water}|${stats.today.steps}|${stats.goalProgress}`;
   useEffect(() => {
-    load();
+    load(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig]);
 
@@ -79,13 +88,14 @@ export default function CoachCard() {
               {aiMsg ? "AI Coach" : "Your Coach"}
             </p>
             <button
-              onClick={load}
-              disabled={loading}
+              onClick={() => load(true)}
+              disabled={loading || cooldown}
               data-testid="coach-refresh"
-              className="text-primary/70 transition-colors hover:text-primary disabled:opacity-50"
-              title="New tip"
+              className="flex items-center gap-1 text-primary/70 transition-colors hover:text-primary disabled:opacity-40"
+              title={cooldown ? "Please wait before refreshing again" : "New tip"}
             >
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              {cooldown && <span className="text-xs">wait…</span>}
             </button>
           </div>
           <h3 className="font-heading mt-1 text-lg font-bold" data-testid="coach-headline">

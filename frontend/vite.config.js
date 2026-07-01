@@ -5,13 +5,15 @@ import path from 'path';
 export default defineConfig({
   plugins: [
     react({
-      include: ['**/*.jsx', '**/*.js', '**/*.tsx', '**/*.ts'],
+      // Process JSX in both .js and .jsx files
+      include: /\.(jsx|js|tsx|ts)$/,
     }),
   ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    extensions: ['.jsx', '.js', '.tsx', '.ts'],
   },
   server: {
     port: 3000,
@@ -21,11 +23,6 @@ export default defineConfig({
   },
   build: {
     outDir: 'build',
-  },
-  esbuild: {
-    loader: 'jsx',
-    include: /src\/.*\.js$/,
-    exclude: [],
   },
   optimizeDeps: {
     esbuildOptions: {

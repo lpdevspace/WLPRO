@@ -1,17 +1,17 @@
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { app } from "../firebase";
+
+// Calls the secure Cloud Function — the OpenAI key never touches the browser.
+const functions = getFunctions(app, "europe-west1");
+const coachTipFn = httpsCallable(functions, "coachTip", { timeout: 15000 });
 
 export async function fetchCoachTip(payload) {
-  if (!BACKEND_URL) {
-    throw new Error("Missing VITE_BACKEND_URL");
+  try {
+    const result = await coachTipFn(payload);
+    return result.data?.message?.trim() || null;
+  } catch (err) {
+    // Gracefully return null so CoachCard falls back to rule-based message
+    console.warn("coachTip function error:", err.message);
+    return null;
   }
-
-  const res = await fetch(`${BACKEND_URL}/api/coach`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) throw new Error(`coach ${res.status}`);
-  const data = await res.json();
-  return (data.message || "").trim();
 }

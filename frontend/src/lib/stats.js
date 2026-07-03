@@ -9,6 +9,30 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
+function addDays(dateStr, days) {
+  const dt = new Date(dateStr);
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+function longestConsecutiveStreak(dateKeys) {
+  if (!dateKeys.length) return 0;
+  const sorted = [...new Set(dateKeys)].sort();
+  let best = 1;
+  let current = 1;
+
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === addDays(sorted[i - 1], 1)) {
+      current += 1;
+      best = Math.max(best, current);
+    } else {
+      current = 1;
+    }
+  }
+
+  return best;
+}
+
 // weights: [{ id, weightKg, date(ISO) }]  (any order)
 // logs: [{ date('YYYY-MM-DD'), calories, water, steps }]
 // goal: { targetWeightKg, targetDate, startWeightKg } | null
@@ -27,7 +51,8 @@ export function computeStats(weights = [], logs = [], goal = null, photos = []) 
   const totalChange = current != null && start != null ? current - start : null;
 
   // Logging streak: consecutive days (ending today or yesterday) with a weigh-in.
-  const days = new Set(sorted.map((w) => dateKey(w.date)));
+  const dayKeys = sorted.map((w) => dateKey(w.date));
+  const days = new Set(dayKeys);
   let streak = 0;
   const cursor = new Date();
   if (!days.has(dateKey(cursor))) cursor.setDate(cursor.getDate() - 1);
@@ -36,6 +61,7 @@ export function computeStats(weights = [], logs = [], goal = null, photos = []) 
     cursor.setDate(cursor.getDate() - 1);
   }
   const loggedToday = days.has(dateKey(new Date()));
+  const bestStreak = longestConsecutiveStreak(dayKeys);
 
   // Goal progress (works for both loss and gain goals).
   let goalProgress = null;
@@ -68,7 +94,7 @@ export function computeStats(weights = [], logs = [], goal = null, photos = []) 
     totalEntries: sorted.length,
     totalPhotos: photos.length,
     sorted,
-    bestStreak: streak, // simple; live streak doubles as best for now
+    bestStreak,
   };
 }
 

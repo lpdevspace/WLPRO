@@ -20,7 +20,6 @@ function longestConsecutiveStreak(dateKeys) {
   const sorted = [...new Set(dateKeys)].sort();
   let best = 1;
   let current = 1;
-
   for (let i = 1; i < sorted.length; i++) {
     if (sorted[i] === addDays(sorted[i - 1], 1)) {
       current += 1;
@@ -29,41 +28,45 @@ function longestConsecutiveStreak(dateKeys) {
       current = 1;
     }
   }
-
   return best;
 }
 
 // weights: [{ id, weightKg, date(ISO) }]  (any order)
-// logs: [{ date('YYYY-MM-DD'), calories, water, steps }]
-// goal: { targetWeightKg, targetDate, startWeightKg } | null
-// photos: [...]
+// logs:    [{ date('YYYY-MM-DD'), calories, water, steps, restDay? }]
+// goal:    { targetWeightKg, targetDate, startWeightKg } | null
+// photos:  [...]
 export function computeStats(weights = [], logs = [], goal = null, photos = []) {
-  const sorted = [...weights].sort(
-    (a, b) => new Date(a.date) - new Date(b.date),
-  );
-  const current = sorted.length ? sorted[sorted.length - 1].weightKg : null;
-  const previous =
-    sorted.length > 1 ? sorted[sorted.length - 2].weightKg : null;
+  const sorted = [...weights].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const current  = sorted.length ? sorted[sorted.length - 1].weightKg : null;
+  const previous = sorted.length > 1 ? sorted[sorted.length - 2].weightKg : null;
   const earliest = sorted.length ? sorted[0].weightKg : null;
-  const start = goal?.startWeightKg ?? earliest;
+  const start    = goal?.startWeightKg ?? earliest;
 
-  const lastChange = current != null && previous != null ? current - previous : null;
-  const totalChange = current != null && start != null ? current - start : null;
+  const lastChange  = current != null && previous != null ? current - previous : null;
+  const totalChange = current != null && start    != null ? current - start    : null;
 
-  // Logging streak: consecutive days (ending today or yesterday) with a weigh-in.
+  // Logging streak — rest days count as logged (streak freeze)
   const dayKeys = sorted.map((w) => dateKey(w.date));
   const days = new Set(dayKeys);
+
+  // Merge rest days into the streak-eligible set
+  const restDaySet = new Set(
+    logs.filter((l) => l.restDay).map((l) => l.id || l.date),
+  );
+  const eligibleDays = new Set([...days, ...restDaySet]);
+
   let streak = 0;
   const cursor = new Date();
-  if (!days.has(dateKey(cursor))) cursor.setDate(cursor.getDate() - 1);
-  while (days.has(dateKey(cursor))) {
+  if (!eligibleDays.has(dateKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+  while (eligibleDays.has(dateKey(cursor))) {
     streak += 1;
     cursor.setDate(cursor.getDate() - 1);
   }
-  const loggedToday = days.has(dateKey(new Date()));
-  const bestStreak = longestConsecutiveStreak(dayKeys);
 
-  // Goal progress (works for both loss and gain goals).
+  const loggedToday = days.has(dateKey(new Date()));
+  const bestStreak  = longestConsecutiveStreak(dayKeys);
+
+  // Goal progress
   let goalProgress = null;
   let toGoalKg = null;
   if (goal && current != null && start != null) {
@@ -72,29 +75,18 @@ export function computeStats(weights = [], logs = [], goal = null, photos = []) 
     toGoalKg = current - goal.targetWeightKg;
   }
 
-  const todayKey = dateKey(new Date());
-  const today = logs.find((l) => l.date === todayKey) || {
-    calories: 0,
-    water: 0,
-    steps: 0,
-  };
+  const todayKey2 = dateKey(new Date());
+  const today = logs.find((l) => l.date === todayKey2) || { calories: 0, water: 0, steps: 0 };
 
   return {
-    current,
-    previous,
-    start,
-    earliest,
-    lastChange,
-    totalChange,
-    streak,
-    loggedToday,
-    goalProgress,
-    toGoalKg,
+    current, previous, start, earliest,
+    lastChange, totalChange,
+    streak, loggedToday, bestStreak,
+    goalProgress, toGoalKg,
     today,
     totalEntries: sorted.length,
-    totalPhotos: photos.length,
+    totalPhotos:  photos.length,
     sorted,
-    bestStreak,
   };
 }
 
@@ -103,7 +95,7 @@ export function weeklyAverages(weights = []) {
   const map = new Map();
   for (const w of weights) {
     const d = new Date(w.date);
-    const dayIdx = (d.getDay() + 6) % 7; // 0 = Monday
+    const dayIdx = (d.getDay() + 6) % 7;
     const monday = new Date(d);
     monday.setDate(d.getDate() - dayIdx);
     const key = monday.toISOString().slice(0, 10);

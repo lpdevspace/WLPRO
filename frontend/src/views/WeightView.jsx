@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2, Pencil, StickyNote } from "lucide-react";
+import { Trash2, Pencil, StickyNote, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { useApp } from "../contexts/AppContext";
 import WeightChart from "../components/WeightChart";
@@ -11,7 +11,16 @@ import { formatWeight } from "../lib/units";
 export default function WeightView() {
   const { uid, weights, unit } = useApp();
   const reversed = [...weights].reverse();
-  const [editing, setEditing] = useState(null); // weight object being edited
+  const [editing, setEditing] = useState(null);
+  const [search, setSearch]   = useState("");
+
+  const filtered = search.trim()
+    ? reversed.filter(
+        (w) =>
+          (w.note || "").toLowerCase().includes(search.toLowerCase()) ||
+          w.date.includes(search),
+      )
+    : reversed;
 
   const remove = async (id) => {
     if (!window.confirm("Delete this entry?")) return;
@@ -24,9 +33,11 @@ export default function WeightView() {
   };
 
   const diffFromPrev = (idx) => {
-    const cur = reversed[idx];
-    const prev = reversed[idx + 1];
-    if (!prev) return null;
+    // diff relative to position in full reversed array, not filtered
+    const fullIdx = reversed.findIndex((w) => w.id === filtered[idx]?.id);
+    const cur  = reversed[fullIdx];
+    const prev = reversed[fullIdx + 1];
+    if (!cur || !prev) return null;
     return cur.weightKg - prev.weightKg;
   };
 
@@ -47,14 +58,38 @@ export default function WeightView() {
       <WeeklyAverages />
 
       <div className="rounded-[var(--radius)] border bg-card" data-testid="weight-history">
-        <div className="border-b px-6 py-4">
+        <div className="flex items-center justify-between border-b px-6 py-4">
           <h2 className="font-heading text-lg font-bold">History</h2>
+          {/* Search bar */}
+          <div className="relative flex items-center">
+            <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              data-testid="weight-search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search notes or date…"
+              className="h-9 rounded-full border border-input bg-background pl-9 pr-8 text-sm outline-none focus:border-primary w-52"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2 text-muted-foreground hover:text-foreground"
+                data-testid="clear-search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
-        {reversed.length === 0 ? (
-          <div className="px-6 py-12 text-center text-sm text-muted-foreground">No entries yet — log your first weigh-in above.</div>
+
+        {filtered.length === 0 ? (
+          <div className="px-6 py-12 text-center text-sm text-muted-foreground">
+            {search ? `No entries matching "${search}"` : "No entries yet — log your first weigh-in above."}
+          </div>
         ) : (
           <ul>
-            {reversed.map((w, idx) => {
+            {filtered.map((w, idx) => {
               const diff = diffFromPrev(idx);
               return (
                 <li
@@ -68,11 +103,9 @@ export default function WeightView() {
                         {formatWeight(w.weightKg, unit)}
                       </span>
                       {diff !== null && (
-                        <span
-                          className={`text-xs font-semibold ${
-                            diff < 0 ? "text-green-500" : diff > 0 ? "text-red-500" : "text-muted-foreground"
-                          }`}
-                        >
+                        <span className={`text-xs font-semibold ${
+                          diff < 0 ? "text-green-500" : diff > 0 ? "text-red-500" : "text-muted-foreground"
+                        }`}>
                           {diff > 0 ? "+" : ""}{formatWeight(Math.abs(diff), unit)}
                           {diff < 0 ? " ▼" : diff > 0 ? " ▲" : ""}
                         </span>
@@ -115,12 +148,8 @@ export default function WeightView() {
         )}
       </div>
 
-      {/* Edit dialog — rendered outside the list to avoid nesting issues */}
       {editing && (
-        <AddWeightDialog
-          existing={editing}
-          onClose={() => setEditing(null)}
-        />
+        <AddWeightDialog existing={editing} onClose={() => setEditing(null)} />
       )}
     </div>
   );

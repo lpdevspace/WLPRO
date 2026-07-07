@@ -40,7 +40,7 @@ export default function ForecastCard() {
         You've reached your goal — incredible work! 🎉
       </p>
     );
-  } else if (fc.status === "ontrack") {
+  } else if (fc.status === "ontrack" && fc.etaDate) {
     body = (
       <div data-testid="forecast-ontrack">
         <p className="metric-font text-2xl font-black">

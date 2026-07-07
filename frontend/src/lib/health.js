@@ -36,12 +36,16 @@ export function computeTDEE(weightKg, heightCm, ageYears, sex = "neutral", activ
 /**
  * Forecast how many weeks until the goal is hit based on recent rate of change.
  * weights: [{ weightKg, date }]  goal: { targetWeightKg }
- * Returns null if not enough data, or { weeks, ratePerWeek, status }
+ * Returns null if not enough data, or { weeks, ratePerWeek, etaDate, status }
  */
 export function forecastGoal(weights = [], goal = null) {
   if (!goal?.targetWeightKg || weights.length < 2) return null;
 
-  const sorted = [...weights].sort((a, b) => new Date(a.date) - new Date(b.date));
+  // Filter out any entries missing a valid date field before sorting
+  const valid = weights.filter((w) => w.date && !isNaN(new Date(w.date).getTime()));
+  if (valid.length < 2) return null;
+
+  const sorted = [...valid].sort((a, b) => new Date(a.date) - new Date(b.date));
   const recent = sorted.slice(-8); // last 8 entries for rate calc
 
   const first = recent[0];
@@ -52,19 +56,25 @@ export function forecastGoal(weights = [], goal = null) {
   const ratePerWeek = ((last.weightKg - first.weightKg) / days) * 7;
   const toGo = last.weightKg - goal.targetWeightKg;
 
-  if (ratePerWeek === 0 || toGo === 0) return { weeks: 0, ratePerWeek: 0, status: "ontrack" };
+  if (toGo === 0) return { weeks: 0, ratePerWeek: 0, etaDate: new Date(), status: "reached" };
+  if (ratePerWeek === 0) return { weeks: null, ratePerWeek: 0, etaDate: null, status: "flat" };
   if (Math.sign(ratePerWeek) === Math.sign(toGo)) {
-    return { weeks: null, ratePerWeek, status: "off" };
+    return { weeks: null, ratePerWeek, etaDate: null, status: "off" };
   }
 
   const weeks = Math.abs(toGo / ratePerWeek);
-  return { weeks, ratePerWeek, status: "ontrack" };
+  const etaDate = new Date();
+  etaDate.setDate(etaDate.getDate() + Math.round(weeks * 7));
+
+  return { weeks, ratePerWeek, etaDate, status: "ontrack" };
 }
 
 // Plateau: weight change < 0.5 kg over the last 14 days of entries
 export function detectPlateau(weights = [], goalProgress) {
   if (goalProgress != null && goalProgress >= 1) return { plateau: false };
-  const sorted = [...weights].sort((a, b) => new Date(a.date) - new Date(b.date));
+  // Filter out entries with no valid date
+  const valid = weights.filter((w) => w.date && !isNaN(new Date(w.date).getTime()));
+  const sorted = [...valid].sort((a, b) => new Date(a.date) - new Date(b.date));
   const recent = sorted.slice(-14);
   if (recent.length < 7) return { plateau: false };
   const diff = Math.abs(recent[recent.length - 1].weightKg - recent[0].weightKg);

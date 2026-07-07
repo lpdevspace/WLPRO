@@ -5,14 +5,35 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
+    // Valid hex accent colour or empty string
+    function validAccent(v) {
+      return v == '' || v.matches('^#?[0-9a-fA-F]{3,6}$');
+    }
+
+    // Block data-URL photo writes — photos must use Storage URLs
+    function notDataUrl(url) {
+      return !url.matches('^data:.*');
+    }
+
     match /users/{userId} {
       allow read:   if isOwner(userId);
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
+      // Validate accent field on profile updates
+      allow update: if isOwner(userId)
+        && (!('accent' in request.resource.data)
+            || validAccent(request.resource.data.accent));
       allow delete: if false;
 
       match /weights/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        // Every weight doc must have a weightKg number and a date string
+        allow create: if isOwner(userId)
+          && request.resource.data.weightKg is number
+          && request.resource.data.date is string;
+        allow update: if isOwner(userId)
+          && request.resource.data.weightKg is number
+          && request.resource.data.date is string;
+        allow delete: if isOwner(userId);
       }
 
       match /dailyLogs/{docId} {
@@ -20,9 +41,24 @@ service cloud.firestore {
       }
 
       match /photos/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        // Block base64 data-URL writes — Storage URLs only
+        allow create: if isOwner(userId)
+          && notDataUrl(request.resource.data.photoUrl);
+        allow update: if isOwner(userId)
+          && notDataUrl(request.resource.data.photoUrl);
+        allow delete: if isOwner(userId);
       }
 
+      // badges doc: only seenBadges array allowed
+      match /meta/badges {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId)
+          && request.resource.data.keys().hasOnly(['seenBadges'])
+          && request.resource.data.seenBadges is list;
+      }
+
+      // catch-all for other meta docs
       match /meta/{docId} {
         allow read, write: if isOwner(userId);
       }

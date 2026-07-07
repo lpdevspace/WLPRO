@@ -7,7 +7,7 @@ service cloud.firestore {
 
     function validProfile() {
       return request.resource.data.keys().hasOnly([
-        'displayName', 'email', 'photoURL', 'unit', 'theme', 'accent', 'heightCm', 'createdAt', 'seenBadges'
+        'displayName', 'email', 'photoURL', 'unit', 'theme', 'accent', 'heightCm', 'createdAt', 'seenBadges', 'waterGoal'
       ]);
     }
 
@@ -22,11 +22,12 @@ service cloud.firestore {
     }
 
     function validDailyLog() {
-      return request.resource.data.keys().hasOnly(['date', 'calories', 'water', 'steps'])
+      return request.resource.data.keys().hasOnly(['date', 'calories', 'water', 'steps', 'restDay'])
         && request.resource.data.date is string
         && (!('calories' in request.resource.data) || (request.resource.data.calories is number && request.resource.data.calories >= 0 && request.resource.data.calories < 20000))
-        && (!('water' in request.resource.data) || (request.resource.data.water is number && request.resource.data.water >= 0 && request.resource.data.water < 100))
-        && (!('steps' in request.resource.data) || (request.resource.data.steps is number && request.resource.data.steps >= 0 && request.resource.data.steps < 100000));
+        && (!('water'    in request.resource.data) || (request.resource.data.water    is number && request.resource.data.water    >= 0 && request.resource.data.water    < 100))
+        && (!('steps'    in request.resource.data) || (request.resource.data.steps    is number && request.resource.data.steps    >= 0 && request.resource.data.steps    < 100000))
+        && (!('restDay'  in request.resource.data) || request.resource.data.restDay is bool);
     }
 
     function validPhoto() {

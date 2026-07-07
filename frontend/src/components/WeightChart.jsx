@@ -12,6 +12,13 @@ import { useApp } from "../contexts/AppContext";
 import { useThemeColor } from "../hooks/useThemeColor";
 import { toDisplay, unitLabel } from "../lib/units";
 
+function safeDateLabel(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export default function WeightChart({ height = 280 }) {
   const { weights, unit, goal, theme, accent } = useApp();
   const primary = useThemeColor("--primary", [theme, accent]);
@@ -19,11 +26,11 @@ export default function WeightChart({ height = 280 }) {
   const cardBg = useThemeColor("--card", [theme]);
   const border = useThemeColor("--border", [theme]);
 
-  const data = weights.map((w) => ({
-    date: new Date(w.date).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    }),
+  // Filter out any corrupt docs missing a date field before rendering
+  const validWeights = weights.filter((w) => w.date);
+
+  const data = validWeights.map((w) => ({
+    date: safeDateLabel(w.date),
     value: Number(toDisplay(w.weightKg, unit).toFixed(1)),
   }));
 

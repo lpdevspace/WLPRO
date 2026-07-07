@@ -14,6 +14,13 @@ import { useThemeColor } from "../hooks/useThemeColor";
 import { weeklyAverages } from "../lib/stats";
 import { toDisplay, unitLabel, formatWeight } from "../lib/units";
 
+function safeDateLabel(weekStart) {
+  if (!weekStart) return "";
+  const d = new Date(weekStart);
+  if (isNaN(d.getTime())) return weekStart;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export default function WeeklyAverages() {
   const { weights, unit, theme, accent } = useApp();
   const primary = useThemeColor("--primary", [theme, accent]);
@@ -23,13 +30,12 @@ export default function WeeklyAverages() {
 
   const weeks = useMemo(() => weeklyAverages(weights), [weights]);
 
-  const data = weeks.map((w) => ({
-    label: new Date(w.weekStart).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    }),
-    value: Number(toDisplay(w.avgKg, unit).toFixed(1)),
-  }));
+  const data = weeks
+    .filter((w) => w.weekStart)
+    .map((w) => ({
+      label: safeDateLabel(w.weekStart),
+      value: Number(toDisplay(w.avgKg, unit).toFixed(1)),
+    }));
 
   const lastDelta =
     weeks.length >= 2

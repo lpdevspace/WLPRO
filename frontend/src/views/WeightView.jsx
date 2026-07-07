@@ -8,6 +8,17 @@ import AddWeightDialog from "../components/AddWeightDialog";
 import { deleteWeight } from "../lib/data";
 import { formatWeight } from "../lib/units";
 
+// Parse YYYY-MM-DD as local date (avoids UTC midnight → previous day timezone drift)
+function formatDateStr(dateStr) {
+  if (!dateStr) return "";
+  const parts = dateStr.split("-").map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return dateStr;
+  const [y, m, d] = parts;
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    weekday: "short", month: "short", day: "numeric", year: "numeric",
+  });
+}
+
 export default function WeightView() {
   const { uid, weights, unit } = useApp();
   const reversed = [...weights].reverse();
@@ -18,7 +29,7 @@ export default function WeightView() {
     ? reversed.filter(
         (w) =>
           (w.note || "").toLowerCase().includes(search.toLowerCase()) ||
-          w.date.includes(search),
+          (w.date || "").includes(search),
       )
     : reversed;
 
@@ -33,7 +44,6 @@ export default function WeightView() {
   };
 
   const diffFromPrev = (idx) => {
-    // diff relative to position in full reversed array, not filtered
     const fullIdx = reversed.findIndex((w) => w.id === filtered[idx]?.id);
     const cur  = reversed[fullIdx];
     const prev = reversed[fullIdx + 1];
@@ -60,7 +70,6 @@ export default function WeightView() {
       <div className="rounded-[var(--radius)] border bg-card" data-testid="weight-history">
         <div className="flex items-center justify-between border-b px-6 py-4">
           <h2 className="font-heading text-lg font-bold">History</h2>
-          {/* Search bar */}
           <div className="relative flex items-center">
             <Search className="absolute left-3 h-4 w-4 text-muted-foreground" />
             <input
@@ -113,7 +122,7 @@ export default function WeightView() {
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <p className="text-xs text-muted-foreground">
-                        {new Date(w.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+                        {formatDateStr(w.date)}
                       </p>
                       {w.note && (
                         <span className="flex items-center gap-1 text-xs text-muted-foreground italic" title={w.note}>

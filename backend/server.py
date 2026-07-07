@@ -22,6 +22,13 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# Configure logging early so it's available to all handlers
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # Create the main app without a prefix
 app = FastAPI()
 
@@ -119,7 +126,7 @@ async def coach(req: CoachRequest):
             api_key=EMERGENT_LLM_KEY,
             session_id=f"coach-{uuid.uuid4()}",
             system_message=COACH_SYSTEM,
-        ).with_model("openai", "gpt-5.4")
+        ).with_model("openai", "gpt-4o")
         message = await chat.send_message(UserMessage(text=_build_coach_prompt(req)))
         text = (message or "").strip().strip('"')
         return {"message": text}
@@ -161,13 +168,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

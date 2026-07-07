@@ -31,8 +31,14 @@ function longestConsecutiveStreak(dateKeys) {
   return best;
 }
 
+// Resolve the date key from a log doc regardless of whether it stores date in
+// the document ID (l.id) or a separate field (l.date).
+function logDateKey(l) {
+  return l.id || l.date || null;
+}
+
 // weights: [{ id, weightKg, date(ISO) }]  (any order)
-// logs:    [{ date('YYYY-MM-DD'), calories, water, steps, restDay? }]
+// logs:    [{ id('YYYY-MM-DD'), date?('YYYY-MM-DD'), calories, water, steps, restDay? }]
 // goal:    { targetWeightKg, targetDate, startWeightKg } | null
 // photos:  [...]
 export function computeStats(weights = [], logs = [], goal = null, photos = []) {
@@ -51,7 +57,7 @@ export function computeStats(weights = [], logs = [], goal = null, photos = []) 
 
   // Merge rest days into the streak-eligible set
   const restDaySet = new Set(
-    logs.filter((l) => l.restDay).map((l) => l.id || l.date),
+    logs.filter((l) => l.restDay).map(logDateKey).filter(Boolean),
   );
   const eligibleDays = new Set([...days, ...restDaySet]);
 
@@ -76,7 +82,8 @@ export function computeStats(weights = [], logs = [], goal = null, photos = []) 
   }
 
   const todayKey2 = dateKey(new Date());
-  const today = logs.find((l) => l.date === todayKey2) || { calories: 0, water: 0, steps: 0 };
+  // Match on either l.id or l.date since Firestore docs may store the key in either field
+  const today = logs.find((l) => logDateKey(l) === todayKey2) || { calories: 0, water: 0, steps: 0 };
 
   return {
     current, previous, start, earliest,
@@ -94,6 +101,7 @@ export function computeStats(weights = [], logs = [], goal = null, photos = []) 
 export function weeklyAverages(weights = []) {
   const map = new Map();
   for (const w of weights) {
+    if (!w.date) continue;
     const d = new Date(w.date);
     const dayIdx = (d.getDay() + 6) % 7;
     const monday = new Date(d);

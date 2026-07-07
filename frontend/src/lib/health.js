@@ -1,4 +1,4 @@
-// health.js — pure helpers for BMI, TDEE, healthy ranges, plateau detection
+// health.js — pure helpers for BMI, TDEE, healthy ranges, goal forecasting & plateau detection
 
 export function computeBMI(weightKg, heightCm) {
   if (!weightKg || !heightCm) return null;
@@ -27,10 +27,38 @@ export function healthyWeightRange(heightCm) {
 export function computeTDEE(weightKg, heightCm, ageYears, sex = "neutral", activityLevel = 1.375) {
   if (!weightKg || !heightCm || !ageYears) return null;
   let bmr;
-  if (sex === "male")   bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + 5;
+  if (sex === "male")        bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears + 5;
   else if (sex === "female") bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears - 161;
-  else bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears - 78; // neutral midpoint
+  else                       bmr = 10 * weightKg + 6.25 * heightCm - 5 * ageYears - 78;
   return Math.round(bmr * activityLevel);
+}
+
+/**
+ * Forecast how many weeks until the goal is hit based on recent rate of change.
+ * weights: [{ weightKg, date }]  goal: { targetWeightKg }
+ * Returns null if not enough data, or { weeks, ratePerWeek, status }
+ */
+export function forecastGoal(weights = [], goal = null) {
+  if (!goal?.targetWeightKg || weights.length < 2) return null;
+
+  const sorted = [...weights].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const recent = sorted.slice(-8); // last 8 entries for rate calc
+
+  const first = recent[0];
+  const last  = recent[recent.length - 1];
+  const days  = (new Date(last.date) - new Date(first.date)) / 86_400_000;
+  if (days < 1) return null;
+
+  const ratePerWeek = ((last.weightKg - first.weightKg) / days) * 7;
+  const toGo = last.weightKg - goal.targetWeightKg;
+
+  if (ratePerWeek === 0 || toGo === 0) return { weeks: 0, ratePerWeek: 0, status: "ontrack" };
+  if (Math.sign(ratePerWeek) === Math.sign(toGo)) {
+    return { weeks: null, ratePerWeek, status: "off" };
+  }
+
+  const weeks = Math.abs(toGo / ratePerWeek);
+  return { weeks, ratePerWeek, status: "ontrack" };
 }
 
 // Plateau: weight change < 0.5 kg over the last 14 days of entries

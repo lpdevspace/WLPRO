@@ -2,9 +2,9 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { logger } = require("firebase-functions");
 
-// Store your OpenAI key in Firebase Secret Manager:
-// firebase functions:secrets:set OPENAI_API_KEY
-const openAiKey = defineSecret("OPENAI_API_KEY");
+// Store your Gemini key in Firebase Secret Manager:
+// firebase functions:secrets:set GEMINI_API_KEY
+const geminiKey = defineSecret("GEMINI_API_KEY");
 
 const SYSTEM_PROMPT =
   "You are an upbeat, emotionally intelligent weight-loss and wellness coach inside an " +
@@ -37,8 +37,7 @@ function buildUserPrompt(p) {
 }
 
 exports.coachTip = onCall(
-  // secrets array makes the key available inside the function
-  { secrets: [openAiKey], region: "europe-west1" },
+  { secrets: [geminiKey], region: "europe-west1" },
   async (request) => {
     // Must be authenticated
     if (!request.auth) {
@@ -56,31 +55,30 @@ exports.coachTip = onCall(
     const userPrompt = buildUserPrompt(payload);
 
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const model = "gemini-2.0-flash";
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey.value()}`;
+
+      const res = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openAiKey.value()}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
-          max_tokens: 80,
-          temperature: 0.8,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userPrompt },
-          ],
+          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+          generationConfig: {
+            maxOutputTokens: 80,
+            temperature: 0.8,
+          },
         }),
       });
 
       if (!res.ok) {
         const err = await res.text();
-        logger.error("OpenAI error", err);
+        logger.error("Gemini error", err);
         throw new HttpsError("internal", "AI service unavailable.");
       }
 
       const data = await res.json();
-      const message = data.choices?.[0]?.message?.content?.trim() || null;
+      const message = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
       return { message };
     } catch (e) {
       logger.error("coachTip error", e);

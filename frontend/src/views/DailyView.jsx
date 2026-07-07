@@ -9,18 +9,26 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Format a YYYY-MM-DD string safely without timezone drift
+function formatDateKey(dateKey) {
+  if (!dateKey) return "";
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    weekday: "short", month: "short", day: "numeric",
+  });
+}
+
 // Build a 12-week heatmap grid (Mon–Sun, most recent week on right)
 function buildHeatmap(logs) {
-  const cells = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const logSet = new Set(logs.map((l) => l.id || l.date));
 
-  // Go back to the Monday 11 weeks ago
   const dayOfWeek = (today.getDay() + 6) % 7; // 0=Mon
   const startDate = new Date(today);
   startDate.setDate(today.getDate() - dayOfWeek - 11 * 7);
 
+  const cells = [];
   for (let i = 0; i < 12 * 7; i++) {
     const d = new Date(startDate);
     d.setDate(startDate.getDate() + i);
@@ -41,7 +49,7 @@ const DAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", "Sun"];
 export default function DailyView() {
   const { uid, logs, profile, updateProfile } = useApp();
   const key = todayKey();
-  const todayLog = logs.find((l) => l.id === key) || {};
+  const todayLog = logs.find((l) => (l.id || l.date) === key) || {};
 
   const waterGoal = profile?.waterGoal || 8;
 
@@ -88,7 +96,7 @@ export default function DailyView() {
     toast.success(`Water goal set to ${g} glasses`);
   };
 
-  const recent = logs.filter((l) => l.id !== key).slice(0, 7);
+  const recent = logs.filter((l) => (l.id || l.date) !== key).slice(0, 7);
   const heatmap = useMemo(() => buildHeatmap(logs), [logs]);
 
   return (
@@ -261,13 +269,11 @@ export default function DailyView() {
       <div className="rounded-[var(--radius)] border bg-card p-6" data-testid="log-heatmap">
         <h2 className="font-heading mb-4 text-lg font-bold">Logging consistency</h2>
         <div className="flex gap-1 overflow-x-auto pb-1">
-          {/* Day labels column */}
           <div className="flex flex-col gap-1 pr-1">
             {DAY_LABELS.map((d, i) => (
               <div key={i} className="h-3 w-7 text-right text-[9px] leading-3 text-muted-foreground">{d}</div>
             ))}
           </div>
-          {/* Week columns */}
           {Array.from({ length: 12 }).map((_, weekIdx) => (
             <div key={weekIdx} className="flex flex-col gap-1">
               {heatmap.slice(weekIdx * 7, weekIdx * 7 + 7).map((cell) => (
@@ -279,9 +285,7 @@ export default function DailyView() {
                       ? "bg-muted/30"
                       : cell.isToday
                         ? cell.logged ? "bg-primary ring-1 ring-primary ring-offset-1" : "bg-muted ring-1 ring-muted-foreground/40 ring-offset-1"
-                        : cell.logged
-                          ? "bg-primary"
-                          : "bg-muted"
+                        : cell.logged ? "bg-primary" : "bg-muted"
                   }`}
                 />
               ))}
@@ -300,25 +304,26 @@ export default function DailyView() {
             <h2 className="font-heading text-lg font-bold">Recent days</h2>
           </div>
           <ul className="divide-y divide-border">
-            {recent.map((l) => (
-              <li
-                key={l.id}
-                className="flex items-center justify-between px-6 py-3 text-sm"
-                data-testid="daily-row"
-              >
-                <span className="text-muted-foreground">
-                  {new Date(l.id).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-                </span>
-                <div className="flex items-center gap-4">
-                  {l.restDay && <span className="text-xs text-primary font-medium">Rest day 🛡️</span>}
-                  <span className="flex gap-4">
-                    <span className="flex items-center gap-1"><Flame className="h-3.5 w-3.5 text-muted-foreground" />{l.calories || 0}</span>
-                    <span className="flex items-center gap-1"><Droplets className="h-3.5 w-3.5 text-muted-foreground" />{l.water || 0}</span>
-                    <span className="flex items-center gap-1"><Footprints className="h-3.5 w-3.5 text-muted-foreground" />{(l.steps || 0).toLocaleString()}</span>
-                  </span>
-                </div>
-              </li>
-            ))}
+            {recent.map((l) => {
+              const dateKey = l.id || l.date;
+              return (
+                <li
+                  key={dateKey}
+                  className="flex items-center justify-between px-6 py-3 text-sm"
+                  data-testid="daily-row"
+                >
+                  <span className="text-muted-foreground">{formatDateKey(dateKey)}</span>
+                  <div className="flex items-center gap-4">
+                    {l.restDay && <span className="text-xs text-primary font-medium">Rest day 🛡️</span>}
+                    <span className="flex gap-4">
+                      <span className="flex items-center gap-1"><Flame className="h-3.5 w-3.5 text-muted-foreground" />{l.calories || 0}</span>
+                      <span className="flex items-center gap-1"><Droplets className="h-3.5 w-3.5 text-muted-foreground" />{l.water || 0}</span>
+                      <span className="flex items-center gap-1"><Footprints className="h-3.5 w-3.5 text-muted-foreground" />{(l.steps || 0).toLocaleString()}</span>
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

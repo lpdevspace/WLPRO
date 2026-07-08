@@ -39,14 +39,12 @@ function buildUserPrompt(p) {
 exports.coachTip = onCall(
   { secrets: [geminiKey], region: "europe-west1" },
   async (request) => {
-    // Must be authenticated
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "Login required.");
     }
 
     const payload = request.data || {};
 
-    // Basic rate-limit guard: max payload size check
     const str = JSON.stringify(payload);
     if (str.length > 2000) {
       throw new HttpsError("invalid-argument", "Payload too large.");
@@ -55,7 +53,7 @@ exports.coachTip = onCall(
     const userPrompt = buildUserPrompt(payload);
 
     try {
-      const model = "gemini-1.5-flash";
+      const model = "gemini-2.5-flash";
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey.value()}`;
 
       const res = await fetch(url, {

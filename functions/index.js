@@ -34,6 +34,18 @@ function rawText(data) {
   return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
 }
 
+/**
+ * Strip optional ```json ... ``` or ``` ... ``` fences that some Gemini
+ * versions add even when responseMimeType is set to application/json.
+ */
+function stripJsonFence(text) {
+  if (!text) return text;
+  // Remove ```json\n...\n``` or ```\n...\n```
+  const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced) return fenced[1].trim();
+  return text;
+}
+
 // ---------------------------------------------------------------------------
 // coachTip — structured output: { message, mood, emoji, category }
 // category: "warning" | "celebration" | "encouragement" | "neutral"
@@ -82,18 +94,21 @@ exports.coachTip = onCall(
       const text = rawText(data);
       if (!text) return { message: null };
 
-      // Parse structured JSON; fall back gracefully
+      // Strip any code-fence wrapper Gemini occasionally adds
+      const clean = stripJsonFence(text);
+
+      // Parse structured JSON; fall back gracefully to plain text
       try {
-        const parsed = JSON.parse(text);
+        const parsed = JSON.parse(clean);
         return {
-          message: parsed.message || null,
-          mood: parsed.mood || null,
-          emoji: parsed.emoji || null,
+          message:  parsed.message  || null,
+          mood:     parsed.mood     || null,
+          emoji:    parsed.emoji    || null,
           category: parsed.category || "neutral",
         };
       } catch {
         // Gemini returned plain text despite instruction — still usable
-        return { message: text, mood: null, emoji: null, category: "neutral" };
+        return { message: clean, mood: null, emoji: null, category: "neutral" };
       }
     } catch (e) {
       logger.error("coachTip error", e);
@@ -145,14 +160,14 @@ exports.mealScan = onCall(
       const text = rawText(data);
       if (!text) throw new HttpsError("internal", "Empty response from AI.");
 
-      const result = JSON.parse(text);
+      const result = JSON.parse(stripJsonFence(text));
       return {
         description: result.description || "Unknown meal",
-        calories: Math.round(result.calories || 0),
-        protein: result.protein || 0,
-        carbs: result.carbs || 0,
-        fat: result.fat || 0,
-        confidence: result.confidence || "low",
+        calories:    Math.round(result.calories || 0),
+        protein:     result.protein || 0,
+        carbs:       result.carbs   || 0,
+        fat:         result.fat     || 0,
+        confidence:  result.confidence || "low",
       };
     } catch (e) {
       if (e instanceof HttpsError) throw e;
@@ -180,15 +195,15 @@ exports.weeklySummary = onSchedule(
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const cutoff = sevenDaysAgo.toISOString().slice(0, 10);
-    const today = new Date().toISOString().slice(0, 10);
+    const today  = new Date().toISOString().slice(0, 10);
 
     const usersSnap = await db.collection("users").get();
     const promises = usersSnap.docs.map(async (userDoc) => {
       try {
-        const uid = userDoc.id;
-        const profile = userDoc.data();
+        const uid       = userDoc.id;
+        const profile   = userDoc.data();
         const firstName = (profile?.displayName || "there").split(" ")[0];
-        const unit = profile?.unit || "kg";
+        const unit      = profile?.unit || "kg";
 
         // Fetch last 7 days of weight entries
         const weightsSnap = await db
@@ -201,19 +216,21 @@ exports.weeklySummary = onSchedule(
 
         const entries = weightsSnap.docs.map((d) => d.data());
         const weights = entries.map((e) => e.weight).filter(Boolean);
-        const startW = weights[0];
-        const endW = weights[weights.length - 1];
-        const change = endW != null && startW != null ? +(endW - startW).toFixed(2) : null;
-        const avgW = weights.length ? +(weights.reduce((a, b) => a + b, 0) / weights.length).toFixed(2) : null;
+        const startW  = weights[0];
+        const endW    = weights[weights.length - 1];
+        const change  = endW != null && startW != null ? +(endW - startW).toFixed(2) : null;
+        const avgW    = weights.length
+          ? +(weights.reduce((a, b) => a + b, 0) / weights.length).toFixed(2)
+          : null;
 
         const prompt =
           `User's first name: ${firstName}. ` +
           `Unit: ${unit}. ` +
           `Entries this week: ${weights.length} out of 7 days. ` +
           (startW != null ? `Starting weight: ${startW} ${unit}. ` : "") +
-          (endW != null ? `Ending weight: ${endW} ${unit}. ` : "") +
+          (endW   != null ? `Ending weight: ${endW} ${unit}. `     : "") +
           (change != null ? `Net change: ${change > 0 ? "+" : ""}${change} ${unit}. ` : "") +
-          (avgW != null ? `Weekly average: ${avgW} ${unit}. ` : "") +
+          (avgW   != null ? `Weekly average: ${avgW} ${unit}. `    : "") +
           (profile?.goalWeight != null ? `Goal weight: ${profile.goalWeight} ${unit}. ` : "") +
           "Write the weekly recap now.";
 
@@ -232,10 +249,10 @@ exports.weeklySummary = onSchedule(
           .set({
             summary,
             generatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            weekStart: cutoff,
-            weekEnd: today,
+            weekStart:   cutoff,
+            weekEnd:     today,
             entriesCount: weights.length,
-            netChange: change,
+            netChange:   change,
           });
 
         logger.info(`Weekly summary written for uid=${uid}`);

@@ -21,33 +21,36 @@ export default function CoachCard() {
   const { stats, unit, goal, profile, weights } = useApp();
   const fallback = getCoachMessage(stats, unit, goal);
 
-  const [aiTip, setAiTip]     = useState(null); // { message, mood, emoji, category }
-  const [loading, setLoading] = useState(false);
+  // null  = not yet loaded
+  // false = loaded but AI returned nothing (use fallback)
+  // obj   = { message, mood, emoji, category }
+  const [aiTip, setAiTip]       = useState(null);
+  const [loading, setLoading]   = useState(false);
   const [cooldown, setCooldown] = useState(false);
   const cooldownTimer = useRef(null);
 
   const buildPayload = useCallback(() => {
     const num = (v) => (v == null ? null : Number(toDisplay(v, unit).toFixed(1)));
-    const fc = forecastGoal(weights, goal);
+    const fc      = forecastGoal(weights, goal);
     const plateau = detectPlateau(weights, stats.goalProgress);
     return {
       unit,
-      current: num(stats.current),
-      total_change: num(stats.totalChange),
-      last_change: num(stats.lastChange),
-      streak: stats.streak,
-      logged_today: stats.loggedToday,
+      current:       num(stats.current),
+      total_change:  num(stats.totalChange),
+      last_change:   num(stats.lastChange),
+      streak:        stats.streak,
+      logged_today:  stats.loggedToday,
       goal_progress: stats.goalProgress,
-      to_goal: num(stats.toGoalKg),
-      goal_target: goal ? num(goal.targetWeightKg) : null,
-      calories: stats.today.calories || 0,
-      water: stats.today.water || 0,
-      steps: stats.today.steps || 0,
+      to_goal:       num(stats.toGoalKg),
+      goal_target:   goal ? num(goal.targetWeightKg) : null,
+      calories:      stats.today.calories || 0,
+      water:         stats.today.water    || 0,
+      steps:         stats.today.steps    || 0,
       total_entries: stats.totalEntries,
-      name: (profile?.displayName || "").split(" ")[0] || null,
+      name:          (profile?.displayName || "").split(" ")[0] || null,
       rate_per_week: fc ? Number(toDisplay(fc.ratePerWeek, unit).toFixed(2)) : null,
-      eta_weeks: fc && fc.status === "ontrack" ? Number(fc.weeks.toFixed(1)) : null,
-      plateau: plateau.plateau,
+      eta_weeks:     fc && fc.status === "ontrack" ? Number(fc.weeks.toFixed(1)) : null,
+      plateau:       plateau.plateau,
     };
   }, [stats, unit, goal, profile, weights]);
 
@@ -61,9 +64,10 @@ export default function CoachCard() {
     }
     try {
       const tip = await fetchCoachTip(buildPayload());
-      setAiTip(tip || null);
+      // tip is { message, mood, emoji, category } or null
+      setAiTip(tip || false);
     } catch {
-      setAiTip(null);
+      setAiTip(false);
     } finally {
       setLoading(false);
     }
@@ -75,29 +79,47 @@ export default function CoachCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig]);
 
-  const category = aiTip?.category || "neutral";
-  const styles = CATEGORY_STYLES[category] || CATEGORY_STYLES.neutral;
-  const body   = aiTip?.message || fallback.message;
+  // Derive display values ─────────────────────────────────────────────────
+  // aiTip===null  → still loading, show skeleton/spinner
+  // aiTip===false → AI failed, use fallback
+  // aiTip===obj   → use AI content
+  const hasAi      = aiTip && typeof aiTip === "object";
+  const category   = hasAi ? (aiTip.category || "neutral") : "neutral";
+  const styles     = CATEGORY_STYLES[category] || CATEGORY_STYLES.neutral;
+
+  // Headline: prefer AI mood label, fall back to rule-based headline
+  const headline   = hasAi && aiTip.mood ? aiTip.mood : fallback.headline;
+  // Body message: prefer AI message, fall back to rule-based message
+  const body       = hasAi && aiTip.message ? aiTip.message : fallback.message;
+  // Label above headline
+  const label      = hasAi ? "AI Coach" : "Your Coach";
+  // Icon: emoji from AI or default Sparkles
+  const iconEmoji  = hasAi && aiTip.emoji ? aiTip.emoji : null;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className={`relative overflow-hidden rounded-[var(--radius)] border ${styles.border} bg-gradient-to-br ${styles.bg} to-transparent p-6 transition-colors duration-500`}
+      className={`relative overflow-hidden rounded-[var(--radius)] border ${
+        styles.border
+      } bg-gradient-to-br ${styles.bg} to-transparent p-6 transition-colors duration-500`}
       data-testid="coach-card"
     >
       <div className="absolute -right-6 -top-6 h-28 w-28 rounded-full bg-primary/20 blur-2xl" />
       <div className="relative flex items-start gap-4">
+        {/* Icon dot */}
         <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${styles.dot}`}>
-          {aiTip?.emoji
-            ? <span className="text-xl leading-none">{aiTip.emoji}</span>
+          {iconEmoji
+            ? <span className="text-xl leading-none">{iconEmoji}</span>
             : <Sparkles className="h-5 w-5" />}
         </div>
-        <div className="flex-1">
+
+        <div className="flex-1 min-w-0">
+          {/* Row: label + refresh button */}
           <div className="flex items-center justify-between gap-2">
             <p className={`text-xs font-semibold uppercase tracking-wider ${styles.label}`}>
-              {aiTip ? (aiTip.mood || "AI Coach") : "Your Coach"}
+              {label}
             </p>
             <button
               onClick={() => load(true)}
@@ -110,11 +132,30 @@ export default function CoachCard() {
               {cooldown && <span className="text-xs">wait…</span>}
             </button>
           </div>
-          <h3 className="font-heading mt-1 text-lg font-bold" data-testid="coach-headline">
-            {fallback.headline}
+
+          {/* Headline */}
+          <h3
+            className="font-heading mt-1 text-lg font-bold leading-snug"
+            data-testid="coach-headline"
+          >
+            {/* Show spinner placeholder while first load is in flight */}
+            {loading && aiTip === null ? (
+              <span className="inline-block h-5 w-40 animate-pulse rounded bg-muted" />
+            ) : (
+              headline
+            )}
           </h3>
-          <p className="mt-1 text-sm text-muted-foreground" data-testid="coach-message">
-            {body}
+
+          {/* Body message */}
+          <p
+            className="mt-1 text-sm text-muted-foreground"
+            data-testid="coach-message"
+          >
+            {loading && aiTip === null ? (
+              <span className="inline-block h-4 w-64 animate-pulse rounded bg-muted" />
+            ) : (
+              body
+            )}
           </p>
         </div>
       </div>

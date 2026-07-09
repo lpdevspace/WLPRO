@@ -17,14 +17,19 @@ export async function fetchCoachTip(payload) {
     const d = result.data;
     if (!d?.message) return null;
     return {
-      message: d.message.trim(),
-      mood: d.mood || null,
-      emoji: d.emoji || null,
+      message:  d.message.trim(),
+      mood:     d.mood     || null,
+      emoji:    d.emoji    || null,
       category: d.category || "neutral",
     };
   } catch (err) {
-    // Gracefully return null so CoachCard falls back to rule-based message
-    console.warn("coachTip function error:", err.message);
+    // Log the full error so it is visible in DevTools console
+    console.error(
+      "[WLPro] coachTip Cloud Function error:",
+      err?.code,           // e.g. "functions/internal"
+      err?.message,        // human-readable
+      err?.details ?? "",  // extra detail if present
+    );
     return null;
   }
 }
@@ -40,7 +45,12 @@ export async function scanMeal(imageBase64, mimeType = "image/jpeg") {
     const result = await mealScanFn({ imageBase64, mimeType });
     return result.data || null;
   } catch (err) {
-    console.warn("mealScan function error:", err.message);
+    console.error(
+      "[WLPro] mealScan Cloud Function error:",
+      err?.code,
+      err?.message,
+      err?.details ?? "",
+    );
     return null;
   }
 }

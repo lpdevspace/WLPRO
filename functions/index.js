@@ -8,7 +8,9 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // Store your Gemini key in Firebase Secret Manager:
-// firebase functions:secrets:set GEMINI_API_KEY
+//   firebase functions:secrets:set GEMINI_API_KEY
+// Then grant access:
+//   firebase deploy --only functions
 const geminiKey = defineSecret("GEMINI_API_KEY");
 
 // ---------------------------------------------------------------------------
@@ -24,8 +26,8 @@ async function callGemini(key, body) {
   });
   if (!res.ok) {
     const err = await res.text();
-    logger.error("Gemini error", err);
-    throw new HttpsError("internal", "AI service unavailable.");
+    logger.error("Gemini API error", { status: res.status, body: err });
+    throw new HttpsError("internal", `Gemini API error ${res.status}`);
   }
   return res.json();
 }
@@ -40,7 +42,6 @@ function rawText(data) {
  */
 function stripJsonFence(text) {
   if (!text) return text;
-  // Remove ```json\n...\n``` or ```\n...\n```
   const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   if (fenced) return fenced[1].trim();
   return text;
@@ -48,7 +49,6 @@ function stripJsonFence(text) {
 
 // ---------------------------------------------------------------------------
 // coachTip — structured output: { message, mood, emoji, category }
-// category: "warning" | "celebration" | "encouragement" | "neutral"
 // ---------------------------------------------------------------------------
 const COACH_SYSTEM =
   "You are an upbeat, emotionally intelligent weight-loss and wellness coach inside an " +
@@ -81,23 +81,41 @@ exports.coachTip = onCall(
   { secrets: [geminiKey], region: "europe-west1" },
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "Login required.");
+
     const payload = request.data || {};
-    if (JSON.stringify(payload).length > 2000) throw new HttpsError("invalid-argument", "Payload too large.");
+    if (JSON.stringify(payload).length > 2000) {
+      throw new HttpsError("invalid-argument", "Payload too large.");
+    }
+
+    // ── Explicit secret presence check ──────────────────────────────────────
+    // If the secret is not set or the service account lacks access,
+    // geminiKey.value() returns undefined/empty rather than throwing,
+    // so we check it explicitly and return null instead of crashing.
+    let apiKey;
+    try {
+      apiKey = geminiKey.value();
+    } catch (e) {
+      logger.error("GEMINI_API_KEY secret could not be accessed — is it set in Secret Manager?", e);
+      return { message: null, mood: null, emoji: null, category: "neutral" };
+    }
+
+    if (!apiKey) {
+      logger.error("GEMINI_API_KEY is empty. Run: firebase functions:secrets:set GEMINI_API_KEY");
+      return { message: null, mood: null, emoji: null, category: "neutral" };
+    }
 
     try {
-      const data = await callGemini(geminiKey.value(), {
+      const data = await callGemini(apiKey, {
         systemInstruction: { parts: [{ text: COACH_SYSTEM }] },
         contents: [{ role: "user", parts: [{ text: buildCoachPrompt(payload) }] }],
         generationConfig: { maxOutputTokens: 150, temperature: 0.8, responseMimeType: "application/json" },
       });
 
       const text = rawText(data);
-      if (!text) return { message: null };
+      if (!text) return { message: null, mood: null, emoji: null, category: "neutral" };
 
-      // Strip any code-fence wrapper Gemini occasionally adds
       const clean = stripJsonFence(text);
 
-      // Parse structured JSON; fall back gracefully to plain text
       try {
         const parsed = JSON.parse(clean);
         return {
@@ -107,19 +125,18 @@ exports.coachTip = onCall(
           category: parsed.category || "neutral",
         };
       } catch {
-        // Gemini returned plain text despite instruction — still usable
         return { message: clean, mood: null, emoji: null, category: "neutral" };
       }
     } catch (e) {
-      logger.error("coachTip error", e);
-      throw new HttpsError("internal", "Could not fetch tip.");
+      logger.error("coachTip Gemini call failed", e);
+      // Return null gracefully — frontend will use rule-based fallback
+      return { message: null, mood: null, emoji: null, category: "neutral" };
     }
   }
 );
 
 // ---------------------------------------------------------------------------
 // mealScan — Gemini Vision: photo → { calories, protein, carbs, fat, description }
-// Expects request.data.imageBase64 (data-URL or raw base64) + optional mimeType
 // ---------------------------------------------------------------------------
 const MEAL_SYSTEM =
   "You are a professional nutritionist with expertise in estimating meal nutrition from photos. " +
@@ -138,14 +155,24 @@ exports.mealScan = onCall(
     if (!imageBase64 || typeof imageBase64 !== "string") {
       throw new HttpsError("invalid-argument", "imageBase64 is required.");
     }
-    // Strip data-URL prefix if present
     const base64Data = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
     if (base64Data.length > 1_500_000) {
       throw new HttpsError("invalid-argument", "Image too large. Max ~1 MB base64.");
     }
 
+    let apiKey;
     try {
-      const data = await callGemini(geminiKey.value(), {
+      apiKey = geminiKey.value();
+    } catch (e) {
+      logger.error("GEMINI_API_KEY secret could not be accessed", e);
+      throw new HttpsError("internal", "AI service not configured.");
+    }
+    if (!apiKey) {
+      throw new HttpsError("internal", "AI service not configured — GEMINI_API_KEY is empty.");
+    }
+
+    try {
+      const data = await callGemini(apiKey, {
         systemInstruction: { parts: [{ text: MEAL_SYSTEM }] },
         contents: [{
           role: "user",
@@ -179,8 +206,6 @@ exports.mealScan = onCall(
 
 // ---------------------------------------------------------------------------
 // weeklySummary — scheduled every Monday 08:00 UTC
-// Reads each user's last 7 days of weight entries and writes a Gemini recap
-// to: users/{uid}/weeklySummaries/{YYYY-MM-DD}
 // ---------------------------------------------------------------------------
 const WEEKLY_SYSTEM =
   "You are a warm, encouraging wellness coach writing a personalised weekly recap for a " +
@@ -205,14 +230,13 @@ exports.weeklySummary = onSchedule(
         const firstName = (profile?.displayName || "there").split(" ")[0];
         const unit      = profile?.unit || "kg";
 
-        // Fetch last 7 days of weight entries
         const weightsSnap = await db
           .collection("users").doc(uid).collection("weights")
           .where("date", ">=", cutoff)
           .orderBy("date", "asc")
           .get();
 
-        if (weightsSnap.empty) return; // No data this week — skip
+        if (weightsSnap.empty) return;
 
         const entries = weightsSnap.docs.map((d) => d.data());
         const weights = entries.map((e) => e.weight).filter(Boolean);
@@ -234,7 +258,14 @@ exports.weeklySummary = onSchedule(
           (profile?.goalWeight != null ? `Goal weight: ${profile.goalWeight} ${unit}. ` : "") +
           "Write the weekly recap now.";
 
-        const data = await callGemini(geminiKey.value(), {
+        let apiKey;
+        try { apiKey = geminiKey.value(); } catch (e) {
+          logger.error("weeklySummary: GEMINI_API_KEY not accessible", e);
+          return;
+        }
+        if (!apiKey) { logger.error("weeklySummary: GEMINI_API_KEY empty"); return; }
+
+        const data = await callGemini(apiKey, {
           systemInstruction: { parts: [{ text: WEEKLY_SYSTEM }] },
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: { maxOutputTokens: 200, temperature: 0.75 },

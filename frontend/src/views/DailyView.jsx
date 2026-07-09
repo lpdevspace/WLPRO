@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { useApp } from "../contexts/AppContext";
 import { upsertDailyLog } from "../lib/data";
+import MealScanner from "../components/MealScanner";
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -96,6 +97,14 @@ export default function DailyView() {
     toast.success(`Water goal set to ${g} glasses`);
   };
 
+  // Handler for MealScanner — adds scanned calories to today's total
+  const handleMealScan = (scannedCalories) => {
+    const next = calories + scannedCalories;
+    setCalories(next);
+    save({ calories: next });
+    toast.success(`Added ${scannedCalories} kcal from meal scan 🍽️`);
+  };
+
   const recent = logs.filter((l) => (l.id || l.date) !== key).slice(0, 7);
   const heatmap = useMemo(() => buildHeatmap(logs), [logs]);
 
@@ -139,6 +148,7 @@ export default function DailyView() {
                 +{q}
               </button>
             ))}
+            <MealScanner onAdd={handleMealScan} />
           </div>
         </motion.div>
 

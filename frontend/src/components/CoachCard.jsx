@@ -7,13 +7,21 @@ import { fetchCoachTip } from "../lib/coachApi";
 import { toDisplay } from "../lib/units";
 import { forecastGoal, detectPlateau } from "../lib/health";
 
-const COOLDOWN_MS = 30_000; // 30 second cooldown between manual refreshes
+const COOLDOWN_MS = 30_000;
+
+// Category → Tailwind accent classes
+const CATEGORY_STYLES = {
+  warning:      { border: "border-amber-400/50",  bg: "from-amber-400/10",  dot: "bg-amber-400/20 text-amber-500",  label: "text-amber-500" },
+  celebration:  { border: "border-emerald-400/50", bg: "from-emerald-400/10", dot: "bg-emerald-400/20 text-emerald-500", label: "text-emerald-500" },
+  encouragement:{ border: "border-sky-400/50",    bg: "from-sky-400/10",    dot: "bg-sky-400/20 text-sky-500",    label: "text-sky-500" },
+  neutral:      { border: "border-primary/30",    bg: "from-primary/15",    dot: "bg-primary/20 text-primary",    label: "text-primary" },
+};
 
 export default function CoachCard() {
   const { stats, unit, goal, profile, weights } = useApp();
   const fallback = getCoachMessage(stats, unit, goal);
 
-  const [aiMsg, setAiMsg] = useState(null);
+  const [aiTip, setAiTip]     = useState(null); // { message, mood, emoji, category }
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(false);
   const cooldownTimer = useRef(null);
@@ -53,9 +61,9 @@ export default function CoachCard() {
     }
     try {
       const tip = await fetchCoachTip(buildPayload());
-      setAiMsg(tip || null);
+      setAiTip(tip || null);
     } catch {
-      setAiMsg(null);
+      setAiTip(null);
     } finally {
       setLoading(false);
     }
@@ -67,25 +75,29 @@ export default function CoachCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig]);
 
-  const body = aiMsg || fallback.message;
+  const category = aiTip?.category || "neutral";
+  const styles = CATEGORY_STYLES[category] || CATEGORY_STYLES.neutral;
+  const body   = aiTip?.message || fallback.message;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="relative overflow-hidden rounded-[var(--radius)] border border-primary/30 bg-gradient-to-br from-primary/15 to-transparent p-6"
+      className={`relative overflow-hidden rounded-[var(--radius)] border ${styles.border} bg-gradient-to-br ${styles.bg} to-transparent p-6 transition-colors duration-500`}
       data-testid="coach-card"
     >
       <div className="absolute -right-6 -top-6 h-28 w-28 rounded-full bg-primary/20 blur-2xl" />
       <div className="relative flex items-start gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary">
-          <Sparkles className="h-5 w-5" />
+        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${styles.dot}`}>
+          {aiTip?.emoji
+            ? <span className="text-xl leading-none">{aiTip.emoji}</span>
+            : <Sparkles className="h-5 w-5" />}
         </div>
         <div className="flex-1">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-primary">
-              {aiMsg ? "AI Coach" : "Your Coach"}
+            <p className={`text-xs font-semibold uppercase tracking-wider ${styles.label}`}>
+              {aiTip ? (aiTip.mood || "AI Coach") : "Your Coach"}
             </p>
             <button
               onClick={() => load(true)}

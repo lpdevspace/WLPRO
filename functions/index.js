@@ -9,8 +9,6 @@ const db = admin.firestore();
 
 // Store your Gemini key in Firebase Secret Manager:
 //   firebase functions:secrets:set GEMINI_API_KEY
-// Then grant access:
-//   firebase deploy --only functions
 const geminiKey = defineSecret("GEMINI_API_KEY");
 
 // ---------------------------------------------------------------------------
@@ -36,10 +34,6 @@ function rawText(data) {
   return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
 }
 
-/**
- * Strip optional ```json ... ``` or ``` ... ``` fences that some Gemini
- * versions add even when responseMimeType is set to application/json.
- */
 function stripJsonFence(text) {
   if (!text) return text;
   const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -48,15 +42,29 @@ function stripJsonFence(text) {
 }
 
 // ---------------------------------------------------------------------------
-// coachTip — structured output: { message, mood, emoji, category }
+// coachTip — uses responseSchema for guaranteed structured output
 // ---------------------------------------------------------------------------
 const COACH_SYSTEM =
   "You are an upbeat, emotionally intelligent weight-loss and wellness coach inside an " +
   "app called WL Pro. Write SHORT, punchy, genuinely encouraging messages (max 2 sentences, " +
-  "under 45 words). Be warm and human, never preachy, never give medical advice, never shame " +
-  "the user about weight gain. Celebrate consistency and effort over outcomes.\n\n" +
-  "You MUST respond with valid JSON only — no markdown, no prose outside the JSON object.\n" +
-  "Schema: { \"message\": string, \"mood\": string (1-3 word mood label), \"emoji\": string (single emoji), \"category\": \"warning\" | \"celebration\" | \"encouragement\" | \"neutral\" }";
+  "under 45 words). Be warm and human — never preachy, never give medical advice, never " +
+  "shame the user about weight gain. Celebrate consistency and effort over outcomes. " +
+  "Example good message: \"Four days in a row — that's real dedication, Luke! " +
+  "Keep this momentum going and your goal will come to you.\". " +
+  "Pick the category that best fits the user's situation: " +
+  "celebration (milestone/streak), encouragement (steady progress), " +
+  "warning (not logged/plateau), or neutral (general tip).";
+
+const COACH_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    message:  { type: "string",  description: "Short coaching message, max 45 words, 1-2 sentences." },
+    mood:     { type: "string",  description: "1-3 word mood label, e.g. 'Crushing it' or 'Keep going'." },
+    emoji:    { type: "string",  description: "Single emoji that matches the mood." },
+    category: { type: "string",  enum: ["warning", "celebration", "encouragement", "neutral"] },
+  },
+  required: ["message", "mood", "emoji", "category"],
+};
 
 function buildCoachPrompt(p) {
   const parts = [];
@@ -74,7 +82,8 @@ function buildCoachPrompt(p) {
   if (p.water) parts.push(`Water today: ${p.water} glasses.`);
   if (p.steps) parts.push(`Steps today: ${p.steps}.`);
   if (!p.logged_today) parts.push("The user has NOT logged their weight today.");
-  return parts.join(" ");
+  if (!parts.length) parts.push("General wellness check-in.");
+  return parts.join(" ") + " Write an encouraging coaching message now.";
 }
 
 exports.coachTip = onCall(
@@ -87,18 +96,13 @@ exports.coachTip = onCall(
       throw new HttpsError("invalid-argument", "Payload too large.");
     }
 
-    // ── Explicit secret presence check ──────────────────────────────────────
-    // If the secret is not set or the service account lacks access,
-    // geminiKey.value() returns undefined/empty rather than throwing,
-    // so we check it explicitly and return null instead of crashing.
     let apiKey;
     try {
       apiKey = geminiKey.value();
     } catch (e) {
-      logger.error("GEMINI_API_KEY secret could not be accessed — is it set in Secret Manager?", e);
+      logger.error("GEMINI_API_KEY secret could not be accessed", e);
       return { message: null, mood: null, emoji: null, category: "neutral" };
     }
-
     if (!apiKey) {
       logger.error("GEMINI_API_KEY is empty. Run: firebase functions:secrets:set GEMINI_API_KEY");
       return { message: null, mood: null, emoji: null, category: "neutral" };
@@ -108,16 +112,19 @@ exports.coachTip = onCall(
       const data = await callGemini(apiKey, {
         systemInstruction: { parts: [{ text: COACH_SYSTEM }] },
         contents: [{ role: "user", parts: [{ text: buildCoachPrompt(payload) }] }],
-        generationConfig: { maxOutputTokens: 150, temperature: 0.8, responseMimeType: "application/json" },
+        generationConfig: {
+          maxOutputTokens: 200,
+          temperature: 0.8,
+          responseMimeType: "application/json",
+          responseSchema: COACH_RESPONSE_SCHEMA,
+        },
       });
 
       const text = rawText(data);
       if (!text) return { message: null, mood: null, emoji: null, category: "neutral" };
 
-      const clean = stripJsonFence(text);
-
       try {
-        const parsed = JSON.parse(clean);
+        const parsed = JSON.parse(stripJsonFence(text));
         return {
           message:  parsed.message  || null,
           mood:     parsed.mood     || null,
@@ -125,11 +132,10 @@ exports.coachTip = onCall(
           category: parsed.category || "neutral",
         };
       } catch {
-        return { message: clean, mood: null, emoji: null, category: "neutral" };
+        return { message: text, mood: null, emoji: null, category: "neutral" };
       }
     } catch (e) {
       logger.error("coachTip Gemini call failed", e);
-      // Return null gracefully — frontend will use rule-based fallback
       return { message: null, mood: null, emoji: null, category: "neutral" };
     }
   }
@@ -140,11 +146,20 @@ exports.coachTip = onCall(
 // ---------------------------------------------------------------------------
 const MEAL_SYSTEM =
   "You are a professional nutritionist with expertise in estimating meal nutrition from photos. " +
-  "Analyse the food in the image and return a JSON object only — no prose, no markdown.\n" +
-  "Schema: { \"description\": string (brief meal description, max 12 words), \"calories\": number (kcal, integer), " +
-  "\"protein\": number (grams, 1dp), \"carbs\": number (grams, 1dp), \"fat\": number (grams, 1dp), " +
-  "\"confidence\": \"high\" | \"medium\" | \"low\" }. " +
-  "If you cannot identify food in the image, set calories to 0 and confidence to \"low\".";
+  "Analyse the food in the image and return nutrition data only — no prose, no explanation.";
+
+const MEAL_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    description: { type: "string",  description: "Brief meal description, max 12 words." },
+    calories:    { type: "integer", description: "Total calories in kcal." },
+    protein:     { type: "number",  description: "Protein in grams (1 decimal place)." },
+    carbs:       { type: "number",  description: "Carbohydrates in grams (1 decimal place)." },
+    fat:         { type: "number",  description: "Fat in grams (1 decimal place)." },
+    confidence:  { type: "string",  enum: ["high", "medium", "low"] },
+  },
+  required: ["description", "calories", "protein", "carbs", "fat", "confidence"],
+};
 
 exports.mealScan = onCall(
   { secrets: [geminiKey], region: "europe-west1" },
@@ -181,7 +196,12 @@ exports.mealScan = onCall(
             { text: "Estimate the nutrition for this meal." },
           ],
         }],
-        generationConfig: { maxOutputTokens: 200, temperature: 0.3, responseMimeType: "application/json" },
+        generationConfig: {
+          maxOutputTokens: 200,
+          temperature: 0.3,
+          responseMimeType: "application/json",
+          responseSchema: MEAL_RESPONSE_SCHEMA,
+        },
       });
 
       const text = rawText(data);
